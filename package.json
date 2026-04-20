@@ -1,0 +1,22 @@
+{
+    "name": "editing-agent",
+    "module": "index.ts",
+    "type": "module",
+    "private": true,
+    "workspaces": [
+        "web",
+        "mastra"
+    ],
+    "scripts": {
+        "dev": "bun run dev:web & bun run dev:mastra",
+        "dev:web": "cd web && bun run dev",
+        "dev:mastra": "cd mastra && bun run dev",
+        "sandbox:build": "docker build -t editing-agent-sandbox ./sandbox"
+    },
+    "devDependencies": {
+        "@types/bun": "latest"
+    },
+    "peerDependencies": {
+        "typescript": "^5"
+    }
+}
