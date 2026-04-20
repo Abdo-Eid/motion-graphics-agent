@@ -371,7 +371,7 @@ After this scaffold:
 
 | Add-on / Flag | Why skip |
 |---|---|
-| `ai` | Scaffolds **TanStack AI** (`@tanstack/ai-react`), not Vercel AI SDK. Our chat talks to a Mastra agent backend, not directly to an LLM. We install `@ai-sdk/react` manually. See [TanStack AI assessment](tanstack-ai-assessment.md) for the full analysis. |
+| `ai` | Scaffolds **TanStack AI** (`@tanstack/ai-react`), not Vercel AI SDK. Our chat talks to a Mastra agent backend, not directly to an LLM. We install `@ai-sdk/react` manually. See [TanStack AI assessment](reference/tanstack-ai-assessment.md) for the full analysis. |
 | `store` | TanStack Store is alpha. The `ai` add-on depends on it, but since we dropped `ai`, we don't need it. React state + tanstack-query is sufficient for a POC. |
 | `eslint` (toolchain) | Unnecessary linting overhead for a POC. If you want zero-config formatting later, use `--toolchain biome`. |
 | `--agent` flag | **Not a real flag.** The TanStack CLI docs mention "Agent Usage" for AI coding tools (Cursor, Claude Code) to introspect add-ons — it's not a create command option. |
