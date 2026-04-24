@@ -1,415 +1,336 @@
-# editing agent
+# Editing Agent
 
-> **One-line summary:** A multi-agent system where AI agents live in a sandbox, write real Remotion code, and iterate with compiler feedback — turning user intent into motion-graphics videos with a live-updating preview.
-> 
+> One-line summary: a multi-agent system that turns user prompts into editable Remotion code through a live Planner -> Art Director -> Implementor workflow.
+
+## Concept
+
+This project is a web-based creative coding system for short product videos.
+
+Instead of filling in templates or returning JSON, the system produces real TypeScript and Remotion code. The user works through chat, the backend agents coordinate the creative and implementation steps, and the frontend shows a live preview of the current composition.
+
+## Current Architecture
+
+The active architecture is:
+
+```text
+Planner -> Art Director -> Implementor
+```
+
+### Planner
+
+- Owns the user conversation
+- Asks clarifying questions
+- Produces a structured brief
+- Stores private memory and shared project context
+- Classifies follow-up edits and routes them
+
+The Planner does not write code and does not use sandbox tools.
+
+### Art Director
+
+- Receives the Planner brief
+- Designs scenes one by one
+- Defines composition, hierarchy, pacing, animation feel, and transition direction
+- Maintains shared `styleContext`
+- Writes scene design data into shared `sceneRegistry`
+
+The Art Director is design-only. It does not write code and does not use sandbox tools.
+
+### Implementor
+
+- Receives scene design output from the Art Director
+- Reads project files and skill docs from the sandbox
+- Writes Remotion code, styling, animation, and transitions in one pass
+- Runs typecheck and optional render checks
+- Updates build status and file paths in shared `sceneRegistry`
+
+The Implementor is the only execution agent and the only one that should use MCP tools.
+
+## Flow
+
+### Initial generation
+
+```text
+User -> Planner -> Art Director -> Implementor -> Preview
+```
+
+1. The user describes the target video.
+2. The Planner clarifies missing constraints and creates a brief.
+3. The Art Director turns the brief into scene-by-scene direction.
+4. The Implementor writes and validates the Remotion code.
+5. The frontend syncs the current files and reloads the preview.
+
+### Incremental edits
+
+The Planner can avoid the full pipeline for narrow changes.
+
+- Exact tweak: route directly to Implementor
+- Creative change: route to Art Director, then Implementor
+- Structural change: run the full pipeline
+
+Typical routing examples:
+
+| User request | Classification | Route |
+|---|---|---|
+| "Make the title bigger" | Minor tweak | Planner -> Implementor |
+| "Change the intro animation to feel more energetic" | Creative change | Planner -> Art Director -> Implementor |
+| "Add a new scene about pricing" | Major restructure | Planner -> Art Director -> Implementor |
+| "Use blue instead of red" | Style change | Planner -> Art Director -> Implementor |
+
+Routing rule of thumb:
+
+- direct Implementor path only for exact, unambiguous changes
+- Art Director path for feel, layout, style, pacing, or ambiguous creative direction
+- if classification is unclear, the Planner should ask one clarifying question before routing
+
+## System Architecture
+
+```text
+TanStack Start frontend (:3000)
+  |- chat UI
+  |- Remotion preview
+  |- agent activity panel
+  `- file viewer
+
+Mastra server (:4111)
+  |- planner-agent
+  |- art-director-agent
+  |- implementor-agent
+  `- memory and routing
+
+Docker sandbox (:3001)
+  |- MCP server
+  |- /workspace project scaffold
+  `- /.skills markdown docs
+```
+
+The frontend streams from Mastra with `useChat()`. The backend owns all model calls. Code execution happens inside a local Docker sandbox through MCP tools.
+
+## Sandbox Model
+
+The sandbox is local Docker, not E2B.
+
+The host starts a container, connects to the MCP server inside it, and exposes those discovered tools to the Implementor. The host also pulls file changes back for preview sync.
+
+Expected tool families:
+
+- Read: `read_file`, `list_files`, `grep`
+- Write: `edit_file`, `create_file`
+- Skills: `list_skills`, `load_skill`
+- Verification: `run_typecheck`, `run_render_check`
+
+## RAG vs Memory
+
+This project separates knowledge into two complementary systems:
+
+- **RAG** — retrieval over stored project knowledge (uploaded files, extracted facts, parsed data, asset metadata, current-project artifacts). Answers "what do we know from the files/data?"
+- **Memory** — active working state that agents carry and update during the session (Planner brief, `styleContext`, `sceneRegistry`, errors, routing decisions). Answers "what is the current state of this project right now?"
+
+### How they work together
+
+1. **RAG feeds facts into Memory.** The Planner retrieves relevant facts from uploaded docs, parsed CSV results, or asset metadata and synthesizes them into the brief and `styleContext`.
+2. **Memory stores the active working state.** Agents read and write memory structures as the session progresses. Memory does not duplicate raw source data — it holds the *current* derived state.
+3. **RAG is re-queryable; Memory is mutable.** RAG indexes are queried on demand. Memory structures are overwritten in place as the project evolves.
+
+### Rule of thumb
+
+| Need | System |
+|---|---|
+| Look up something from uploaded files or data | RAG |
+| Check or update the current project state | Memory |
+| Find an asset's metadata or a doc excerpt | RAG |
+| See which scenes have errors or what the current style is | Memory |
+
+See [`project-knowledge-and-skills.md`](project-knowledge-and-skills.md) for full RAG pipeline details.
 
 ---
 
-# Conceptual Idea
+## Memory Structures
 
-## What This Project Is
+Memory is resource-scoped and centered on two core structures.
 
-A **web-based multi-agent system** that creates and edits videos by having AI agents **write real Remotion (React) code** — not by filling in templates or returning JSON configs, but by generating actual compositions, animations, and transitions as TypeScript files.
+### `styleContext`
 
-The user interacts with a chat interface. Agents interpret the intent, write code in a sandbox, and the platform hot-reloads a live Remotion preview as the code changes.
+Owned primarily by the Art Director.
 
-## What Makes It Different
+Stores:
 
-| Traditional video editor | This system |
-| --- | --- |
-| User edits the timeline manually | Agents write the timeline as code |
-| Fixed UI components | Agents generate custom Remotion compositions |
-| Export at the end | Live preview updates as agents work |
+- color palette
+- typography decisions
+- transition style
+- animation feel
+- mood keywords
 
-The output is not just a video — it is **editable TypeScript/Remotion code generated by agents**, which can be re-run, modified, or extended.
+This value is overwritten in place so it always reflects the current creative direction.
 
-## User Experience
+### `sceneRegistry`
 
-1. User uploads assets (screen recordings, images, clips, or just text)
-2. User gives a simple instruction: *"Make a 30-second product demo highlighting these features"*
-3. The system asks clarifying questions if needed, then agents go to work:
-    - Planner builds a scene plan
-    - Editor writes Remotion composition files
-    - Motion agent adds animations, transitions, and effects
-    - If assets are missing, the system either asks the user to upload them, generates them, or substitutes with a CTA placeholder
-4. The interface shows:
-    - A **live-updating Remotion preview** (hot-reloads as agents write files)
-    - An **agent activity log** (which agent is working, what it's doing)
-    - An **editable file structure** (user can inspect or tweak the generated code)
+Shared scene tracking record.
 
----
+Stores:
 
-# Architecture
+- scene number and name
+- current design data
+- build status
+- generated file path
+- current error state
 
-## Core Approach
+Typical status flow:
 
-Agents live in a **sandboxed environment** with access to the project file system. They:
-
-- Read existing files
-- Write and edit `.tsx` Remotion composition files
-- Receive TypeScript compiler errors as feedback
-- Iterate until the composition renders correctly
-
-This is fundamentally different from a JSON-spec approach. Agents produce real code, not configuration. This means unlimited creative flexibility at the cost of needing a proper feedback loop.
-
-**Flow:**
-
-`User intent → Mastra Server (agents) → E2B Sandbox (.tsx files) → Compiler feedback loop → TanStack Start frontend hot-reloads Remotion Player → Export`
-
-## Two-Server Architecture
-
-The system runs as **two separate processes**:
-
-- **Mastra server** (`mastra dev` on port `4111`) — hosts the agents, tools, memory, and workflows. Exposes agent endpoints via `chatRoute()`.
-- **TanStack Start frontend** (Vite dev server on port `3000`) — hosts the UI, Remotion Player, file explorer, and agent log. Calls the Mastra server via `useChat()` from AI SDK UI.
-
-This is the official Mastra pattern for Vite-based frontends. TanStack Start is Vite-based, so the integration is identical to the Mastra + React/Vite guide.
-
-```
-┌─────────────────────────────┐     HTTP      ┌──────────────────────────────┐
-│   TanStack Start (Vite)     │ ◄──────────── │   Mastra Server (:4111)      │
-│   - Chat UI                 │               │   - Planner agent            │
-│   - Remotion <Player>       │               │   - Editor agent             │
-│   - Agent log               │               │   - Motion agent             │
-│   - File explorer           │               │   - RAG memory               │
-└─────────────────────────────┘               │   - E2B sandbox tools        │
-                                              └──────────────────────────────┘
+```text
+not-started -> designed -> building -> built -> error
 ```
 
-The frontend uses `useChat()` pointed at `http://localhost:4111/chat/:agentId` and streams responses back using AI SDK UI components (`<MessageResponse>`, `<Tool>`, etc.).
+### Ownership
 
-## Where Remotion Lives
+- Planner: private memory, routing, shared-memory storage owner
+- Art Director: writes `styleContext` and `sceneRegistry[n].design`
+- Implementor: writes `sceneRegistry[n].status`, `.filePath`, and `.errors`
 
-Remotion is **embedded inside the platform**, not a separate service.
+### Mutation Rules
 
-- A `<Player>` component in the UI renders the current composition live — it hot-reloads whenever agents write new files
-- When the user exports, a server-side Remotion renderer produces an MP4
-- Agents never call Remotion directly — they write the `.tsx` files that Remotion reads
+| Field | Pattern |
+|---|---|
+| `styleContext` | overwrite |
+| `sceneRegistry[n].status` | overwrite |
+| `sceneRegistry[n].errors` | overwrite |
+| message history and user profile | append |
 
-**Layer diagram:**
+### Output Shapes
 
-`Chat UI → Agents (sandbox) → .tsx files → Remotion Player (live) / Remotion Renderer (export)`
+Planner brief example:
 
-## The Sandbox
-
-The sandbox is a remote code execution environment (E2B is the recommended option — no Docker setup needed, API-based). Agents interact with it using a tool set modeled after how real coding tools like Claude Code, Copilot, and OpenCode work: **read by line range, edit by search-and-replace**.
-
-This is critical for two reasons:
-
-- **Token efficiency** — agents never re-read or rewrite an entire file when they only need to touch a few lines
-- **Precision** — search-and-replace edits are surgical; whole-file overwrites cause accidental regressions
-
-### File Reading Tools
-
-- `read_file(path, offset?, limit?)` — read a file, optionally scoped to a line range (`offset` = start line, `limit` = number of lines). Agents first skim the structure, then zoom into the relevant section.
-- `list_files(dir)` — explore the project directory tree
-- `grep(pattern, path?, recursive?)` — search for a symbol, function name, or string across files. Returns file path + line number + matching line content.
-
-### File Writing Tools
-
-We use **search-and-replace** edits, matching the pattern used by Claude Code, OpenCode, and Codex. This format is reliable for LLMs — no line-number arithmetic, just quote the exact old text and the exact new text.
-
-- `edit_file(path, old_string, new_string, replace_all?)` — the primary write tool. Finds `old_string` in the file and replaces it with `new_string`. `old_string` must appear exactly once unless `replace_all` is true. Agents include 2–3 lines of surrounding context inside `old_string` to guarantee uniqueness.
-- `create_file(path, content)` — only used when creating a **new** file from scratch. Never used to overwrite an existing file.
-
-**How `edit_file` behaves:**
-
-| Situation | Behavior |
-| --- | --- |
-| `old_string` appears exactly once | Replacement applied, success returned |
-| `old_string` appears multiple times | Error — agent must add more context to `old_string` to make it unique |
-| `old_string` not found | Error — agent must re-read the file and retry with correct text |
-| `replace_all: true` | All occurrences replaced (used for renames across a file) |
-
-This approach matches how models already think about edits: quote the exact text, describe the exact replacement. No arithmetic, no line counting.
-
-### Skill Tools
-
-Agents can discover and load **skills** before writing code — structured documentation that teaches them how to use a specific library or API correctly. This is the same pattern used by Claude Code, Copilot, and TanStack Intent: skills travel with the codebase, not with the model.
-
-- `list_skills()` — returns all available skills by name and description. Agents call this at the start of a task to see what knowledge is available.
-    - agent might have a registry of skills and their description in context when it runs
-- `load_skill(name)` — loads the full skill document for a given library. Returns structured markdown: API reference, usage patterns, gotchas, and code examples.
-
-**Skills live in a `/.skills/` directory** in the project scaffold. Each skill is a markdown file:
-
-```
-/.skills/
-  remotion.md          ← Remotion API: useCurrentFrame, spring, interpolate, AbsoluteFill...
-  remotion-audio.md    ← Audio sync, useAudioData, visualizeAudio
-  remotion-transitions.md ← TransitionSeries, SlideTransition, FadeTransition...
-  supabase-storage.md  ← How to reference uploaded assets by URL in compositions
-  tailwind.md          ← Tailwind classes available in Remotion compositions
+```json
+{
+  "projectGoal": "30-second product demo for a note-taking app",
+  "audience": "Product managers and startup founders",
+  "tone": "Clean, professional, confident",
+  "duration": "20-30 seconds (600-900 frames at 30fps)",
+  "assets": [
+    { "type": "logo", "path": "/assets/logo.png" }
+  ],
+  "messages": [
+    "Capture notes instantly",
+    "Organize with AI tags",
+    "Share with your team"
+  ],
+  "preferences": {
+    "motionFeel": "smooth, confident",
+    "colorPalette": ["#1a1a2e", "#16213e", "#e94560"]
+  }
+}
 ```
 
-**Agent workflow with skills:**
+Art Director scene design example:
 
-```jsx
-1. Agent receives task (e.g. "add a zoom + fade transition between scenes")
-2. Agent calls list_skills() → sees remotion-transitions.md is available
-3. Agent calls load_skill("remotion-transitions") → reads the API, examples, gotchas
-4. Agent writes the edit using correct Remotion APIs — no hallucinated props
-5. run_typecheck() - optional - confirms it compiles
-```
-
-This prevents the most common agent failure mode: confidently using an API that doesn't exist or using the right function with the wrong signature.
-
-### Execution & Feedback Tools
-
-- `run_typecheck()` — optional runs `tsc --noEmit` and returns compiler errors with file path, line number, and message. The agent that triggered the error receives this output and applies a follow-up `edit_file` call to fix it.
-- `run_render_check()` — optional headless render of the first few frames to catch runtime errors the type checker misses (missing assets, invalid Remotion props).
-
-### Edit Example
-
-To change an existing composition, the agent produces an `edit_file` call with enough context to uniquely identify the target:
-
-```tsx
-edit_file({
-  path: "src/compositions/FeatureCallout.tsx",
-  old_string: `  const opacity = spring({ frame, fps, config: { damping: 12 } });
-  return (
-    <AbsoluteFill style={{ opacity }}>`,
-  new_string: `  const opacity = spring({ frame, fps, config: { damping: 12 } });
-  const scale = spring({ frame, fps, config: { damping: 20, stiffness: 80 } });
-  return (
-    <AbsoluteFill style={{ opacity, transform: \`scale(\${scale})\` }}>`,
-})
-```
-
-The system verifies `old_string` appears exactly once in the file before executing. If not found, or if it matches multiple times, the agent gets an error and re-reads the relevant section before retrying.
-
-### Feedback Loop
-
-```jsx
-Agent produces edit_file call
-  → system verifies old_string is unique → applies replacement
-  → run_typecheck() runs
-  → errors? agent reads the flagged line range → produces fix edit → repeat
-  → clean? Remotion Player hot-reloads
-```
-
----
-
-# Multi-Agent System
-
-## Agent Responsibilities
-
-### 1. Planner / Orchestrator
-
-- Understands the user's goal
-- Asks for missing inputs or assets
-- Produces a structured **scene plan** (not code — a high-level description of what each scene should do)
-- Manages memory: style preferences, past decisions, uploaded assets
-- Routes work to Editor and Motion agents
-
-### 2. Editor Agent
-
-- Reads the scene plan from the Planner
-- Calls `list_skills()` / `load_skill()` to load the relevant Remotion docs before writing
-- Reads the existing project scaffold (helpers, utilities)
-- Writes the main Remotion `<Composition>` and individual scene `.tsx` files
-- Sequences assets, defines timing and structure
-- Runs `run_typecheck()` after each edit; fixes errors with follow-up `edit_file` calls
-
-### 3. Motion Agent
-
-- Reads the Editor's compositions
-- Loads motion-related skills (`remotion-transitions`, animation patterns)
-- Adds motion graphics: `spring()` animations, zoom/pan, text entrances, transitions, highlight effects
-- Works at the animation layer — edits existing files rather than creating new ones
-- Runs through the same typecheck feedback loop
-
-Each agent loops on the compiler feedback cycle until its output is clean before handing off. An optional final `run_render_check()` at the end of the Motion agent's work catches runtime issues missed by the type checker.
-
-## What the Agents Write
-
-Agents produce real React/Remotion files like:
-
-```tsx
-// scenes/FeatureCallout.tsx
-export const FeatureCallout = ({ text, startFrame }: Props) => {
-  const opacity = spring({ frame: frame - startFrame, fps, config: { damping: 12 } });
-  return (
-    <AbsoluteFill style={{ opacity }}>
-      <div className="callout-box">{text}</div>
-    </AbsoluteFill>
-  );
-};
-```
-
-They are not constrained to predefined templates. However, they **do start from a scaffold** — a base project with shared utilities, a `<ScreenRecording>` wrapper, common animation helpers, and type definitions. This prevents agents from reinventing the wheel every time while keeping creative freedom intact.
-
----
-
-# Tech Stack
-
-## Chosen Stack
-
-| Layer | Tool | Why |
-| --- | --- | --- |
-| **Frontend** | TanStack Start | Type-safe routing, Vite-based (same as Mastra's official React guide), client-first |
-| **Video Engine** | Remotion | React-based, embeds as a `<Player>`, server-side renders to MP4 |
-| **Agent Server** | Mastra | TypeScript-native standalone server, built-in workflows + memory + RAG, `chatRoute()` for AI SDK UI |
-| **LLM + Streaming UI** | Vercel AI SDK (AI SDK UI) | `useChat()`  • AI Elements, officially supported by Mastra |
-| **Sandbox** | E2B | API-based remote execution, no Docker setup needed |
-| **DB / Storage / Vector** | Supabase | Asset storage, session DB, vector search for RAG memory |
-
-## How Mastra + TanStack Start Connect
-
-Since TanStack Start is Vite-based, it follows the same pattern as the official [Mastra + React/Vite guide](https://mastra.ai/guides/getting-started/vite-react):
-
-1. Run `mastra init` inside the project — scaffolds `src/mastra/` with agents, tools, and config
-2. Add `chatRoute()` to `src/mastra/index.ts` — exposes `/chat/:agentId` as an HTTP endpoint
-3. Run `mastra dev` (port `4111`) alongside TanStack Start dev server (port `3000`) as two separate processes
-4. In the frontend, use `useChat()` from `@ai-sdk/react` pointed at the Mastra server
-5. Use **AI Elements** (`@/components/ai-elements`) for pre-built chat UI — message bubbles, tool call displays, prompt input
-
-```tsx
-// src/mastra/index.ts
-import { chatRoute } from '@mastra/ai-sdk'
-export const mastra = new Mastra({
-  server: {
-    apiRoutes: [chatRoute({ path: '/chat/:agentId' })],
+```json
+{
+  "sceneNumber": 1,
+  "name": "Intro",
+  "duration": "150 frames (5 seconds)",
+  "purpose": "Hook the viewer with the product name and a bold visual",
+  "composition": {
+    "layout": "Centered product name, large and bold",
+    "hierarchy": "Product name is the hero. Tagline below in smaller weight."
   },
-})
-
-// TanStack Start frontend
-const { messages, sendMessage, status } = useChat({
-  transport: new DefaultChatTransport({
-    api: 'http://localhost:4111/chat/planner-agent',
-  }),
-})
+  "animation": {
+    "entrance": "Title fades in smoothly with a slight upward drift",
+    "exit": "Quick wipe to the right"
+  },
+  "acceptanceCriteria": [
+    "Title is readable within the first 30 frames",
+    "Transition into scene 2 is seamless"
+  ]
+}
 ```
 
-> **Why not TanStack AI yet?** TanStack AI is currently in alpha. Same type-safety-first philosophy as the rest of the ecosystem, but too early for a POC. Revisit when it hits v1.
-> 
+## Frontend Structure
 
-## What You Build vs. Reuse
-
-**Build:**
-
-- Project scaffold (base Remotion structure, shared utilities, type definitions)
-- Multi-agent workflow and routing logic
-- Sandbox tool definitions (`read_file`, `edit_file`, `create_file`, `grep`, `list_files`, `list_skills`, `load_skill`, `run_typecheck`)
-- Skill documents in `/.skills/` for Remotion + Tailwind
-- Memory layer (RAG over assets, past compositions, style notes)
-- UI (chat + live preview + agent log + file explorer)
-
-**Reuse:**
-
-- Rendering → Remotion
-- Agent orchestration → Mastra
-- LLM interface + chat UI → Vercel AI SDK + AI Elements
-- Sandbox execution → E2B
-- Storage + DB + vector search → Supabase
-
----
-
-# Memory (RAG)
-
-Two layers:
-
-**Short-term (per session):**
-
-- Current scene plan
-- Uploaded assets and their paths
-- Current file structure
-- Compiler errors and retry history
-
-**Long-term (across sessions):**
-
-- Style preferences (colors, fonts, motion feel)
-- Motion choices that worked well
-- Feature descriptions from previous projects
-- Past compositions that can be referenced
-
-Vector search over: product notes, style configs, previous `.tsx` outputs.
-
----
-
-# UI Structure
-
-```
-┌──────────────┬──────────────────────┬─────────────────────┐
-│              │                      │                     │
-│  Chat /      │   Remotion Player    │   Agent Activity    │
-│  Instructions│   (live preview)     │   (live log)        │
-│              │                      │                     │
-├──────────────┴──────────────────────┴─────────────────────┤
-│              File tree / generated code viewer            │
-└───────────────────────────────────────────────────────────┘
+```text
+| Chat | Preview | Activity |
+|      bottom file viewer     |
 ```
 
-- **Left:** Chat interface for instructions and clarifications
-- **Center:** Remotion `<Player>` — hot-reloads as agents write files
-- **Right:** Live agent activity — which agent is active, what it's doing, retry count
-- **Bottom:** File explorer for generated `.tsx` files — user can inspect or manually edit
+- **Chat**: instructions, clarification, streamed responses
+- **Preview**: Remotion Player with synced local files
+- **Activity**: planner routing, design phase, implementation progress
+- **Files**: generated code inspection
 
----
+## Tech Stack
 
-# Build Phases
+| Layer | Choice |
+|---|---|
+| Frontend | TanStack Start |
+| Preview | Remotion |
+| Agent runtime | Mastra |
+| Streaming UI | `@ai-sdk/react` |
+| Memory | `@mastra/memory`, LibSQL |
+| Sandbox | Local Docker + MCP |
+| Package manager | Bun |
 
-## Phase 1 — Scaffold + Remotion Setup
+## Build Phases
 
-- Set up TanStack Start project
-- Integrate Remotion `<Player>` in the UI
-- Build the base project scaffold (shared utilities, type definitions)
-- Verify hot-reload works when files change
+### Phase 1
 
-## Phase 2 — Sandbox + Agent Tools
+- Scaffold monorepo
+- Create `web/`, `mastra/`, and `sandbox/`
+- Add shared root scripts and environment configuration
 
-- Set up E2B sandbox
-- Implement file reading tools: `read_file(path, offset?, limit?)`, `list_files(dir)`, `grep(pattern)`
-- Implement file writing tools: `edit_file(path, old_string, new_string, replace_all?)` (primary), `create_file(path, content)` (new files only)
-- Implement skill tools: `list_skills()`, `load_skill(name)` — backed by `/.skills/` markdown files
-- Write initial Remotion skill docs: `remotion.md`, `remotion-transitions.md`, `remotion-audio.md`
-- Implement execution tools: `run_typecheck()`, `run_render_check()` (optional)
-- Test the full loop manually: load skill → edit_file → typecheck → read error by line → fix edit → clean
+### Phase 2
 
-## Phase 3 — Planner + Editor Agents
+- Build the frontend shell
+- Add chat, preview, activity, and file panels
+- Handle planner streaming and offline/error states
 
-- Build Planner agent with Mastra (scene planning, clarification flow)
-- Build Editor agent (reads plan → writes `.tsx` compositions → fixes compiler errors)
-- Wire up: user message → Planner → Editor → files appear → Player reloads
+### Phase 3
 
-## Phase 4 — Motion Agent + Agent Log UI
+- Implement `planner-agent`
+- Implement `art-director-agent`
+- Implement `implementor-agent`
+- Register all agents with `chatRoute()`
 
-- Build Motion agent (loads motion skills → reads Editor's files → adds animations → reruns typecheck)
-- Build the right-panel agent activity log (live streaming updates of which agent is active, what it's doing, retry count)
-- Add optional `run_render_check()` step after Motion finishes
+### Phase 4
 
-## Phase 5 — Memory + Supabase
+- Build the local Docker sandbox
+- Expose MCP tools and skill loading
+- Connect preview file sync
 
-- Add Supabase storage for uploaded assets
-- Implement RAG memory (long-term style and composition memory)
-- Wire asset references into the agents' context
+### Phase 5
 
-## Phase 6 — Export + Polish
+- Add shared-memory persistence and retrieval
+- Index past work and conversations for recall
 
-- Server-side Remotion render → MP4 download
-- File explorer UI in the bottom panel
-- Error recovery UI (show user when agents are stuck, allow manual intervention)
+### Phase 6
 
----
+- Export pipeline
+- Error recovery UX
+- polish for iterative editing
 
-# What NOT to Build
+## MVP Constraints
 
-- A full video editor UI (no drag-and-drop timeline)
-- A rendering engine (Remotion handles this)
-- An ffmpeg pipeline
-- A custom vector database (Supabase handles this)
-- A Docker-based sandbox (E2B handles this)
+- 20-30 second product and screen-recording videos
+- 30fps
+- no complex 3D
+- no custom audio pipeline in MVP
+- code output must remain editable Remotion source
 
----
+Implementation conventions:
 
-# MVP Scope (Strict)
+- each scene should be a separate component in `src/scenes/`
+- use `AbsoluteFill` as the root container
+- prefer `spring()` for animation unless another approach is clearly needed
+- use Tailwind classes where appropriate
+- do not make external API calls from Remotion compositions
+- do not access the filesystem from browser-executed compositions
 
-- Screen recordings + product demos only
-- Short videos: 20–30 seconds
-- 3-agent system: Planner, Editor, Motion
-- Basic RAG memory
-- Live preview via Remotion Player
-- Code viewer (read-only initially)
-- MP4 export
+## Future Considerations
 
-[Building a Local Docker Sandbox for Agentic Apps](Building%20a%20Local%20Docker%20Sandbox%20for%20Agentic%20Apps.md)
+- Art Director review loop after preview output exists
+- parallel scene generation with Art Director -> Implementor pairs
+- dedicated asset handling for screenshots, logos, and screen recordings
+
+## Related Docs
+
+- [`SETUP_GUIDE.md`](SETUP_GUIDE.md): implementation phases and checkpoints
+- [`project-knowledge-and-skills.md`](project-knowledge-and-skills.md): project knowledge routing, retrieval, uploads, and skill loading
+- [`Building a Local Docker Sandbox for Agentic Apps.md`](Building%20a%20Local%20Docker%20Sandbox%20for%20Agentic%20Apps.md): sandbox design

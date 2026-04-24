@@ -309,7 +309,7 @@ Docker alone is not a hard security boundary (shared kernel with host). For genu
 Mastra supports MCP clients natively — you don't manually wrap each tool. Point Mastra at the MCP client and it auto-discovers everything the server exposes.
 
 ```tsx
-// src/agents/editor-agent.ts
+// src/agents/implementor-agent.ts
 import { Agent } from '@mastra/core/agent'
 import { MCPClient } from '@mastra/mcp'
 
@@ -321,9 +321,9 @@ const mcp = new MCPClient({
 
 const tools = await mcp.getTools()
 
-export const editorAgent = new Agent({
-  name: 'editor',
-  instructions: 'You write Remotion TypeScript files based on the scene plan...',
+export const implementorAgent = new Agent({
+  name: 'implementor',
+  instructions: 'You write Remotion TypeScript files based on Art Director scene designs and shared style context...',
   model: openai('gpt-4o'),
   tools, // all sandbox tools auto-imported via MCP
 })
@@ -343,7 +343,7 @@ Because the sandbox already exposes MCP, **any** MCP-compatible client can use i
 
 # Applying This to the Editing Agent
 
-The editing agent is a specialization of the generic sandbox: Remotion + TypeScript + a few extra tools, plus live preview via diff sync.
+In this project, the sandbox serves the Planner -> Art Director -> Implementor architecture. The Implementor is the MCP tool user; Planner and Art Director stay tool-free. The editing agent is a specialization of the generic sandbox: Remotion + TypeScript + a few extra tools, plus live preview via diff sync.
 
 ## Dockerfile
 

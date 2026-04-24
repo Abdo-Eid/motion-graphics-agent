@@ -1,30 +1,59 @@
-# mastra
+# Mastra Server
 
-Welcome to your new [Mastra](https://mastra.ai/) project! We're excited to see what you'll build.
+The `mastra/` workspace runs the backend agent system for editing-agent.
 
-## Getting Started
+Current architecture:
 
-Start the development server:
+```text
+Planner -> Art Director -> Implementor
+```
 
-```shell
+- **Planner**: intake, clarification, brief generation, routing, memory ownership
+- **Art Director**: scene-by-scene design and style consistency
+- **Implementor**: sandbox-backed code execution, styling, animation, transitions, typecheck loop
+
+## Development
+
+From the repo root:
+
+```bash
+bun run dev:mastra
+```
+
+Or from `mastra/`:
+
+```bash
 bun run dev
 ```
 
-Open [http://localhost:4111](http://localhost:4111) in your browser to access [Mastra Studio](https://mastra.ai/docs/studio/overview). It provides an interactive UI for building and testing your agents, along with a REST API that exposes your Mastra application as a local service. This lets you start building without worrying about integration right away.
+The Mastra server runs on `http://localhost:4111`.
 
-You can start editing files inside the `src/mastra` directory. The development server will automatically reload whenever you make changes.
+## Expected Endpoints
 
-## Learn more
+With `chatRoute({ path: '/chat/:agentId' })`, the server exposes endpoints such as:
 
-To learn more about Mastra, visit our [documentation](https://mastra.ai/docs/). Your bootstrapped project includes example code for [agents](https://mastra.ai/docs/agents/overview), [tools](https://mastra.ai/docs/agents/using-tools), [workflows](https://mastra.ai/docs/workflows/overview), [scorers](https://mastra.ai/docs/evals/overview), and [observability](https://mastra.ai/docs/observability/overview).
+- `POST /chat/planner-agent`
+- `POST /chat/art-director-agent`
+- `POST /chat/implementor-agent`
 
-If you're new to AI agents, check out our [course](https://mastra.ai/learn) and [YouTube videos](https://youtube.com/@mastra-ai). You can also join our [Discord](https://discord.gg/BTYqqHKUrf) community to get help and share your projects.
+## Sandbox Model
 
-## Deploy to the Mastra platform
+This project uses a local Docker sandbox exposed through MCP.
 
-The [Mastra platform](https://projects.mastra.ai) provides two products for deploying and managing AI applications built with the Mastra framework:
+- Planner and Art Director are non-tool agents.
+- Implementor is the execution agent that consumes MCP tools.
+- The sandbox is expected to provide read/edit/exec-style tools and project skills.
 
-- **Studio**: A hosted visual environment for testing agents, running workflows, and inspecting traces
-- **Server**: A production deployment target that runs your Mastra application as an API server
+Build the sandbox image from the repo root with:
 
-Learn more in the [Mastra platform documentation](https://mastra.ai/docs/mastra-platform/overview).
+```bash
+bun run sandbox:build
+```
+
+## Memory Model
+
+- Planner owns private memory and shared-memory storage.
+- Art Director updates shared `styleContext` and scene design data.
+- Implementor updates build status, file paths, and error state in shared scene records.
+
+See the repo docs under `../docs/` for the current architecture and implementation details.

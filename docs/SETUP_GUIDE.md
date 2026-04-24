@@ -22,7 +22,7 @@ editing-agent/
 │   └── package.json
 ├── mastra/                     ← Mastra server (port 4111)
 │   ├── src/
-│   │   ├── agents/             ← planner, editor, motion stubs
+│   │   ├── agents/             ← planner, art-director, implementor stubs
 │   │   ├── sandbox/            ← SandboxSession class
 │   │   └── index.ts            ← Mastra + chatRoute
 │   └── package.json
@@ -123,294 +123,171 @@ editing-agent/
 
 ## Phase 2 — TanStack Start Frontend
 
-The TanStack Start CLI (Phase 1, step 3) scaffolded the project with shadcn and tanstack-query. Remaining work:
+The TanStack Start CLI in Phase 1 scaffolded the frontend. Remaining work:
 
-1. Build the 3-panel layout (chat left | Remotion Player center | agent log right) + file tree viewer at the bottom using shadcn components (`ResizablePanelGroup`, `ScrollArea`, `Card`, etc.).
+1. Build the full-screen layout around four panels:
 
-2. Embed Remotion `<Player>` in the center panel for live video preview.
+    - chat
+    - Remotion preview
+    - agent activity
+    - file viewer
 
-3. Set up `useChat()` from `@ai-sdk/react` (installed in Phase 1 step 4). Point it at:
+2. Stream chat from:
 
-    ```
-    http://localhost:4111/chat/planner-agent
-    ```
+```text
+http://localhost:4111/chat/planner-agent
+```
 
-    This won't connect until Phase 3 (Mastra) is running — but the UI can be built and tested standalone first.
+3. Reflect the current pipeline in the UI:
 
-**Checkpoint:** `cd web && bun run dev` → `localhost:3000` renders the 3-panel shell, no errors.
+    - Planner intake and routing
+    - Art Director design phase
+    - Implementor execution phase
+
+**Checkpoint:**
+
+```bash
+bun run dev:web
+```
+
+Open `http://localhost:3000` and verify the shell renders.
 
 ---
 
 ## Phase 3 — Mastra Agents
 
-The Mastra CLI (Phase 1, step 5) created a clean `src/mastra/` with a blank `index.ts`. Now add your agents.
+The Mastra CLI in Phase 1 created the `mastra/` workspace. Now build the agent system in four tasks:
 
-1. Create three agent files in `src/mastra/agents/`: `planner.ts`, `editor.ts`, `motion.ts`.
-   Each agent uses Mastra's built-in `zai-coding-plan` provider — no extra provider package needed:
+### Task breakdown
 
-    ```ts
-    import { Agent } from '@mastra/core/agent'
+| Order | Task | File | What to build |
+|-------|------|------|---------------|
+| 1 | Planner Agent | `tasks/phase-3-planner-agent.md` | Intake, clarification, brief generation, routing |
+| 2 | Art Director Agent | `tasks/phase-3-art-director-agent.md` | Scene design, styleContext, sceneRegistry design data |
+| 3 | Implementor Agent | `tasks/phase-3-implementor-agent.md` | Remotion code execution, sandbox tools, typecheck loop |
+| 4 | Orchestration | `tasks/phase-3-orchestration.md` | Ordering, routing, memory handoff, parallelism |
 
-    export const plannerAgent = new Agent({
-      id: 'planner-agent',
-      name: 'Planner',
-      instructions: `...`,
-      model: 'zai-coding-plan/glm-4.7-flash',
-      tools: {},
-    })
-    ```
+### Execution order
 
-    Available models (all accessed via `'zai-coding-plan/<model>'`):
+Tasks 1-3 (agents) can be built in any order since each is self-contained. Task 4 (orchestration) must be done last since it wires the agents together.
 
-    | Model | Notes |
-    |---|---|
-    | `glm-5.1` | Latest flagship |
-    | `glm-5` | Flagship, agent-optimized |
-    | `glm-4.7` | High-performance |
-    | `glm-4.7-flash` | Fast, good for POC |
-    | `glm-4.7-flashx` | Fast extended |
-    | `glm-4.6` | Previous-gen flagship |
+Within a running pipeline:
 
-    See [Mastra Z.AI provider](https://mastra.ai/models/providers/zai-coding-plan) for the full list. Auth uses `ZHIPU_API_KEY` env var (set in Phase 1 step 7).
+```text
+User -> Planner -> Art Director -> Implementor -> Preview
+```
 
-2. Edit `src/mastra/index.ts` to register the three agents and add `chatRoute()`:
+For incremental edits the Planner skips unnecessary steps:
 
-    ```ts
-    import { Mastra } from '@mastra/core/mastra';
-    import { chatRoute } from '@mastra/ai-sdk';
-    import { plannerAgent } from './agents/planner';
-    import { editorAgent } from './agents/editor';
-    import { motionAgent } from './agents/motion';
+- exact tweak -> Implementor directly
+- creative change -> Art Director -> Implementor
+- major restructure -> full pipeline
 
-    export const mastra = new Mastra({
-      agents: { plannerAgent, editorAgent, motionAgent },
-      server: {
-        apiRoutes: [
-          chatRoute({ path: '/chat/:agentId' }),
-        ],
-      },
-    });
-    ```
+### Key structures
 
-**Checkpoint:** `cd mastra && bun run dev` → starts on `:4111`, agents appear in logs.
+- `styleContext` — current visual language, owned by Art Director
+- `sceneRegistry` — per-scene design, status, file paths, errors; design owned by Art Director, status/errors owned by Implementor
+
+See [`phase-3-orchestration.md`](../tasks/phase-3-orchestration.md) for full memory handoff diagram, routing table, and parallelism details.
+
+**Checkpoint:**
+
+```bash
+bun run dev:mastra
+```
+
+Verify all three agents respond:
+
+- `POST /chat/planner-agent`
+- `POST /chat/art-director-agent`
+- `POST /chat/implementor-agent`
 
 ---
 
 ## Phase 4 — Docker Sandbox
 
-### MCP Server
+Build the sandbox image and expose an MCP server from inside the container.
 
-1. Create `sandbox/mcp-server/` with a TypeScript HTTP server.  
-   See [MCP spec](https://spec.modelcontextprotocol.io/) for protocol details.
+1. Implement the sandbox tool groups:
 
-2. Implement tools:
-    - **Read:** `read_file(path, offset?, limit?)`, `list_files(dir)`, `grep(pattern)`
-    - **Write:** `edit_file(path, old_string, new_string, replace_all?)`, `create_file(path, content)`
-    - **Skills:** `list_skills()`, `load_skill(name)`
-    - **Exec:** `run_typecheck()`, `run_render_check()`
-    - **Sync:** `get_pending_changes()` (returns diff patches for live preview)
+- read: `read_file`, `list_files`, `grep`
+- write: `edit_file`, `create_file`
+- skills: `list_skills`, `load_skill`
+- verification: `run_typecheck`, `run_render_check`
 
-3. Track all edits in a buffer so the host can pull diffs later.
+2. Build the image:
 
-### Skills
-
-Create markdown files in `sandbox/skills/`:
-
-- `remotion.md` — Remotion API reference (useCurrentFrame, spring, AbsoluteFill, etc.)
-- `remotion-transitions.md` — TransitionSeries, slide, fade, flip, etc.
-- `remotion-audio.md` — Audio, useAudioData, visualizeAudio
-- `tailwind.md` — Available Tailwind utilities in Remotion
-
-### Dockerfile
-
-```dockerfile
-FROM node:22-slim
-RUN apt-get update && apt-get install -y ripgrep git chromium [browser deps]
-RUN useradd -m -u 1001 agent
-USER agent
-WORKDIR /workspace
-
-# Pre-install Remotion deps
-COPY sandbox/remotion-deps/package.json /home/agent/deps/
-RUN cd /home/agent/deps && npm install --omit=dev
-ENV NODE_PATH=/home/agent/deps/node_modules
-
-# Skills + MCP server
-COPY sandbox/skills/ /.skills/
-COPY sandbox/mcp-server/ /home/agent/mcp-server/
-RUN cd /home/agent/mcp-server && npm install --omit=dev && npm run build
-
-EXPOSE 3001
-CMD ["node", "/home/agent/mcp-server/index.js"]
+```bash
+bun run sandbox:build
 ```
-
-Build: `bun run sandbox:build`
 
 **Checkpoint:**
 
 ```bash
 docker run --rm -p 3001:3001 editing-agent-sandbox
-# Should log: "MCP server listening on :3001"
-# In another terminal: curl http://localhost:3001/ → "ok"
 ```
+
+The container should start the MCP server successfully.
 
 ---
 
-## Phase 5 — Wire Agents to Sandbox
+## Phase 5 — Wire Implementor to Sandbox
 
-### SandboxSession (Host)
+1. Start the sandbox container.
+2. Connect the host to the MCP endpoint.
+3. Discover tools from the sandbox.
+4. Inject those tools into the Implementor.
+5. Pull file changes for local preview sync.
 
-Create `mastra/src/sandbox/sandbox-session.ts`: Use `dockerode` to spin up containers, `@modelcontextprotocol/sdk` to connect as an MCP client.
+At this point, only the Implementor should receive MCP tools. Planner and Art Director remain tool-free.
 
-```ts
-class SandboxSession {
-    async start() {
-        // docker.createContainer() with resource limits
-        // connect MCP client to http://localhost:SANDBOX_PORT/mcp
-    }
-}
-```
-
-### Inject Tools into Agents
-
-In `mastra/src/mastra/index.ts`:
-
-1. `SandboxSession.start()` on init
-2. Use `MCPClient` to discover tools from the sandbox
-3. Inject those tools into editor/motion agents' `tools` field
+> **RAG vs Memory note:** At this phase the two knowledge systems come together. **Retrieval (RAG)** handles uploaded project knowledge — docs, parsed data, asset metadata — feeding facts into the working state. **Memory** holds the active working state (brief, `styleContext`, `sceneRegistry`, errors, routing). Only the Implementor uses sandbox MCP tools; Planner and Art Director interact with retrieval and memory through their instructions, not through direct tool access.
 
 **Checkpoint:**
 
-```bash
-# Terminal 1
-bun run sandbox:build
-
-# Terminal 2 — both servers
-bun run dev
-
-# Should log:
-# [sandbox] connected on port 3001
-# [mastra] sandbox tools loaded: read_file, edit_file, list_files, ...
-```
+- sandbox reachable on `:3001`
+- Mastra reachable on `:4111`
+- Implementor can access discovered MCP tools
 
 ---
 
-## Phase 6 — Smoke Test
+## Phase 6 — End-to-End Smoke Test
 
-1. Open `http://localhost:3000` → 3-panel UI visible
-2. Type in chat → streams to planner agent
-3. Verify both servers log activity
-
----
-
-## Fast Setup Commands
-
-If you want to skip the walkthrough and scaffold everything at once:
-
-```powershell
-# Create structure (web/ created by TanStack CLI, mastra/ by Mastra CLI)
-New-Item -ItemType Directory -Force -Path sandbox/mcp-server, sandbox/skills, sandbox/remotion-deps
-
-# Root setup
-New-Item -ItemType File -Force -Path package.json, .env
-# (add workspaces, dev scripts, .env vars)
-
-# Web — scaffold with TanStack CLI
-bunx @tanstack/cli@latest create web --package-manager bun --no-install --add-ons shadcn,tanstack-query
-Remove-Item -Recurse -Force web\.git -ErrorAction SilentlyContinue
-cd web && bun add remotion @remotion/player @ai-sdk/react && cd ..
-
-# Mastra — scaffold with Mastra CLI (built-in zai-coding-plan provider, no extra install)
-bunx create-mastra@latest mastra --no-example --llm openai
-Remove-Item -Force mastra\.gitignore -ErrorAction SilentlyContinue
-cd mastra && bun add @mastra/ai-sdk@latest && cd ..
-
-# Root install — links all workspaces
-bun install
-```
-
-Then proceed with Phase 2 (frontend UI), Phase 3 (replace weather agents with your own), and Phase 4 (sandbox).
+1. Start the sandbox image.
+2. Start the frontend and Mastra server.
+3. Open `http://localhost:3000`.
+4. Send a prompt.
+5. Confirm the Planner responds and downstream work appears in the activity UI.
 
 ---
 
-## What Each Checkpoint Verifies
+## What Each Checkpoint Proves
 
-| Phase | Checkpoint                                   | What it proves                     |
-| ----- | -------------------------------------------- | ---------------------------------- |
-| 1     | `bun install`                                | Workspace is valid                 |
-| 2     | TanStack dev server on `:3000`               | Frontend builds and renders        |
-| 3     | Mastra dev server on `:4111`                 | Agents are registered              |
-| 4     | Docker container runs & responds to `curl`   | Sandbox is isolated and responsive |
-| 5     | Both servers start, logs show "tools loaded" | MCP wiring works end-to-end        |
-| 6     | Chat message streams to agent                | Full loop works                    |
+| Phase | Checkpoint | What it proves |
+|---|---|---|
+| 1 | `bun install` | Workspace is valid |
+| 2 | Frontend on `:3000` | UI builds and renders |
+| 3 | Mastra on `:4111` | Agents are registered |
+| 4 | Sandbox on `:3001` | Docker + MCP boundary works |
+| 5 | Implementor sees tools | MCP tool injection works |
+| 6 | Prompt flows through system | End-to-end loop works |
 
 ---
 
-## Next Steps for Your Team
+## Next Steps
 
 After this scaffold:
 
-1. Write real agent instructions (start with Editor doing one hardcoded scene)
-2. Test `edit_file` → `run_typecheck` → fix errors loop
-3. Wire `get_pending_changes` polling in the frontend for live preview sync
-4. Add Supabase storage for assets (Phase 5 in main spec)
-5. Build out the file explorer UI
+1. Finalize Planner instructions for briefing and routing.
+2. Finalize Art Director instructions for scene design output.
+3. Finalize Implementor instructions for code generation and verification.
+4. Add file sync from sandbox output to frontend preview files.
+5. Expand shared-memory persistence and retrieval.
 
 ---
 
-## TanStack CLI Add-on Decisions
+## Related Docs
 
-### What we use
-
-| Add-on | Why |
-|---|---|
-| `shadcn` | Pre-styled components (`ResizablePanelGroup`, `ScrollArea`, `Card`, `Button`) — zero runtime cost, perfect for the 3-panel layout. Sets up `cn()` utility and Tailwind merge. |
-| `tanstack-query` | Ideal for polling sandbox status and file changes (`useQuery` with `refetchInterval`), plus devtools for debugging during POC. |
-
-### What we skip and why
-
-| Add-on / Flag | Why skip |
-|---|---|
-| `ai` | Scaffolds **TanStack AI** (`@tanstack/ai-react`), not Vercel AI SDK. Our chat talks to a Mastra agent backend, not directly to an LLM. We install `@ai-sdk/react` manually. See [TanStack AI assessment](reference/tanstack-ai-assessment.md) for the full analysis. |
-| `store` | TanStack Store is alpha. The `ai` add-on depends on it, but since we dropped `ai`, we don't need it. React state + tanstack-query is sufficient for a POC. |
-| `eslint` (toolchain) | Unnecessary linting overhead for a POC. If you want zero-config formatting later, use `--toolchain biome`. |
-| `--agent` flag | **Not a real flag.** The TanStack CLI docs mention "Agent Usage" for AI coding tools (Cursor, Claude Code) to introspect add-ons — it's not a create command option. |
-| `better-auth` | No auth in MVP scope. |
-| `convex` | Our backend is Mastra, not Convex. |
-| `form` | No form-heavy UI — the chat input handles everything. |
-
-### Flag decisions
-
-| Flag | Decision | Why |
-|---|---|---|
-| `--no-install` | **Use it** | Bun workspace root handles all installs. Prevents the CLI from running a redundant install inside `web/`. |
-| `--package-manager bun` | **Use it** | Consistent with the rest of the monorepo. |
-| `--toolchain` | **Omit** | No linting needed for POC. |
-
----
-
-## LLM Provider Architecture
-
-This project uses **Z.AI (Zhipu/GLM)** models via Mastra's built-in `zai-coding-plan` provider. No extra provider package needed.
-
-### How LLM calls flow
-
-```
-Frontend (useChat)  →  HTTP SSE  →  Mastra chatRoute()  →  Agent  →  Z.AI
-       ↑                                          ↑
-  just HTTP streaming                      LLM provider lives here
-  no LLM provider needed                   built-in 'zai-coding-plan' string
-```
-
-### Why no `zhipu-ai-sdk-provider` package?
-
-`zhipu-ai-sdk-provider` is a Vercel AI SDK provider — used when calling Z.AI directly through AI SDK. In our architecture, Z.AI is only called **server-side by Mastra agents**. Mastra's built-in `zai-coding-plan` provider handles this internally via its model router (just pass `'zai-coding-plan/glm-4.7-flash'` as a string). The frontend never talks to Z.AI directly — it streams from Mastra's `chatRoute()` via `useChat()`.
-
-| Layer | What it needs | Package |
-|---|---|---|
-| Mastra agents | `'zai-coding-plan/glm-4.7-flash'` string | Built-in, no install |
-| Frontend chat | `useChat()` → Mastra endpoint | `@ai-sdk/react` |
-
-`zhipu-ai-sdk-provider` would only be needed if the frontend called Z.AI directly, which it doesn't.
-
-See [Mastra Z.AI provider](https://mastra.ai/models/providers/zai-coding-plan) for available models and configuration.
+- [`editing agent.md`](editing%20agent.md)
+- [`project-knowledge-and-skills.md`](project-knowledge-and-skills.md)
+- [`Building a Local Docker Sandbox for Agentic Apps.md`](Building%20a%20Local%20Docker%20Sandbox%20for%20Agentic%20Apps.md)
