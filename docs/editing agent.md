@@ -21,10 +21,10 @@ Planner -> Art Director -> Implementor
 - Owns the user conversation
 - Asks clarifying questions
 - Produces a structured brief
-- Stores private memory and shared project context
-- Classifies follow-up edits and routes them
+- Initializes and owns the project's Workspace State
+- Classifies follow-up edits and **decides** the route
 
-The Planner does not write code and does not use sandbox tools.
+The Planner does not write code and does not use sandbox tools. It is the decision-maker, not the executor — it outputs a routing decision but does not invoke the next agent itself. The orchestration layer (see below) executes the route.
 
 ### Art Director
 
@@ -45,6 +45,33 @@ The Art Director is design-only. It does not write code and does not use sandbox
 - Updates build status and file paths in shared `sceneRegistry`
 
 The Implementor is the only execution agent and the only one that should use MCP tools.
+
+### Orchestration
+
+The orchestration layer is **not an agent**. It is the runtime glue that takes the Planner's routing decision and executes the pipeline reliably.
+
+It controls:
+
+- Calling the next agent based on the Planner's routing decision
+- Sequencing handoffs (brief → scene designs → code)
+- Enforcing field ownership in Workspace State
+- Error handling and retries
+- Streaming progress events to the frontend
+- Future parallelism (e.g. parallel scene implementation once designs are finalized)
+
+#### Planner vs Orchestration
+
+| Concern | Planner | Orchestration |
+|---|---|---|
+| Understands user intent | yes | no |
+| Decides which agent runs next | yes | no |
+| Actually invokes the next agent | no | yes |
+| Manages handoffs and field ownership | no | yes |
+| Handles sequencing, errors, retries | no | yes |
+
+The Planner is the brain of the routing decision. The orchestration layer is the runtime that carries it out. This split keeps LLM-suited reasoning separate from code-suited control flow.
+
+See [`tasks/phase-3-orchestration.md`](../tasks/phase-3-orchestration.md) for the full orchestration spec.
 
 ## Flow
 
@@ -119,35 +146,36 @@ Expected tool families:
 - Skills: `list_skills`, `load_skill`
 - Verification: `run_typecheck`, `run_render_check`
 
-## RAG vs Memory
+## Project State: Three Layers
 
-This project separates knowledge into two complementary systems:
+The project uses three project-scoped state layers. There is **no cross-session or user-level memory** in the MVP.
 
-- **RAG** — retrieval over stored project knowledge (uploaded files, extracted facts, parsed data, asset metadata, current-project artifacts). Answers "what do we know from the files/data?"
-- **Memory** — active working state that agents carry and update during the session (Planner brief, `styleContext`, `sceneRegistry`, errors, routing decisions). Answers "what is the current state of this project right now?"
+1. **Conversation Context** — the chat thread for this session, with rolling summarization when it gets long.
+2. **Workspace State** — the structured, mutable state of the project. Agents read and write fields like `brief`, `styleContext`, `sceneRegistry`, `assets`, `dataSummaries`, `documentSummaries`, and `routing`.
+3. **Project Knowledge Store** — chunked large documents (PDFs, brand guides) with a vector index, queried via a retrieval tool only when needed.
 
 ### How they work together
 
-1. **RAG feeds facts into Memory.** The Planner retrieves relevant facts from uploaded docs, parsed CSV results, or asset metadata and synthesizes them into the brief and `styleContext`.
-2. **Memory stores the active working state.** Agents read and write memory structures as the session progresses. Memory does not duplicate raw source data — it holds the *current* derived state.
-3. **RAG is re-queryable; Memory is mutable.** RAG indexes are queried on demand. Memory structures are overwritten in place as the project evolves.
+1. **Workspace State is the default source of truth.** Agents read fields directly. Most upload types (small text, asset images, tiny CSVs, derived facts) land in Workspace State and never need retrieval.
+2. **The Knowledge Store is queried via tools.** When a large PDF is uploaded, its chunks live in the Knowledge Store and a short summary is mirrored into Workspace State. If an agent needs a specific detail not in the summary, it calls a retrieval tool. The returned chunks are used for that turn and are not duplicated into Workspace State.
+3. **Conversation Context flows into every turn.** Recent chat history (or its summary) is included alongside Workspace State in each agent run.
 
 ### Rule of thumb
 
-| Need | System |
+| Need | Where to look |
 |---|---|
-| Look up something from uploaded files or data | RAG |
-| Check or update the current project state | Memory |
-| Find an asset's metadata or a doc excerpt | RAG |
-| See which scenes have errors or what the current style is | Memory |
+| Recent user/agent messages | Conversation Context |
+| Current brief, style, scene status, assets, data facts | Workspace State |
+| A buried detail from a large uploaded doc | Knowledge Store via retrieval tool |
+| A skill snippet for implementation | Skill loader (separate from the Knowledge Store) |
 
-See [`project-knowledge-and-skills.md`](project-knowledge-and-skills.md) for full RAG pipeline details.
+See [`project-knowledge-and-skills.md`](project-knowledge-and-skills.md) for upload pipelines and [`pdf-upload-walkthrough.md`](pdf-upload-walkthrough.md) plus [`upload-walkthroughs.md`](upload-walkthroughs.md) for end-to-end traces.
 
 ---
 
-## Memory Structures
+## Workspace State Structures
 
-Memory is resource-scoped and centered on two core structures.
+Workspace State is project-scoped and centered on a few core structures.
 
 ### `styleContext`
 
@@ -183,9 +211,10 @@ not-started -> designed -> building -> built -> error
 
 ### Ownership
 
-- Planner: private memory, routing, shared-memory storage owner
+- Planner: owns the brief, routing, and Workspace State initialization
 - Art Director: writes `styleContext` and `sceneRegistry[n].design`
 - Implementor: writes `sceneRegistry[n].status`, `.filePath`, and `.errors`
+- Upload router (orchestration): writes `assets`, `dataSummaries`, and `documentSummaries` at upload time
 
 ### Mutation Rules
 
@@ -264,7 +293,8 @@ Art Director scene design example:
 | Preview | Remotion |
 | Agent runtime | Mastra |
 | Streaming UI | `@ai-sdk/react` |
-| Memory | `@mastra/memory`, LibSQL |
+| Workspace state | `@mastra/memory`, LibSQL |
+| Knowledge store | Vector index for large uploaded docs |
 | Sandbox | Local Docker + MCP |
 | Package manager | Bun |
 
@@ -297,8 +327,8 @@ Art Director scene design example:
 
 ### Phase 5
 
-- Add shared-memory persistence and retrieval
-- Index past work and conversations for recall
+- Add Workspace State persistence
+- Wire the Knowledge Store retrieval tool for large uploaded docs
 
 ### Phase 6
 

@@ -1,0 +1,70 @@
+export const THEMES = {
+  light: {
+    name: 'Light',
+    bg: '#eeece9',
+    surface: '#ffffff',
+    surfaceAlt: '#f5f3f0',
+    border: '#d2ccc4',
+    borderAccent: '#bdb5ac',
+    text: '#1a1816',
+    textMuted: '#6f6a64',
+    textDim: '#aaa39b',
+    accent: 'oklch(0.52 0.14 255)',
+    accentAlt: '#1a1816',
+    accentGlow: 'oklch(0.52 0.14 255 / 0.12)',
+    agentColor: 'oklch(0.52 0.14 220)',
+    font: "'JetBrains Mono', monospace",
+    monoFont: "'JetBrains Mono', monospace",
+    headerBg: '#e8e6e3',
+    chatBg: '#eeece9',
+    playerBg: '#eeece9',
+    logBg: '#eeece9',
+    inputBg: '#ffffff',
+    inputBorder: '#d2ccc4',
+    tagBg: 'oklch(0.52 0.14 255 / 0.08)',
+    tagText: 'oklch(0.42 0.14 255)',
+    scrollThumb: '#bdb5ac',
+    radius: '5px',
+    radiusSm: '3px',
+  },
+  dark: {
+    name: 'Dark',
+    bg: '#17171a',
+    surface: '#1f1f23',
+    surfaceAlt: '#252529',
+    border: '#2e2e35',
+    borderAccent: '#3a3a44',
+    text: '#e8e6e2',
+    textMuted: '#6e6e7a',
+    textDim: '#3e3e48',
+    accent: 'oklch(0.65 0.17 255)',
+    accentAlt: '#e8e6e2',
+    accentGlow: 'oklch(0.65 0.17 255 / 0.14)',
+    agentColor: 'oklch(0.65 0.17 220)',
+    font: "'JetBrains Mono', monospace",
+    monoFont: "'JetBrains Mono', monospace",
+    headerBg: '#101013',
+    chatBg: '#17171a',
+    playerBg: '#111114',
+    logBg: '#17171a',
+    inputBg: '#1f1f23',
+    inputBorder: '#2e2e35',
+    tagBg: 'oklch(0.65 0.17 255 / 0.09)',
+    tagText: 'oklch(0.72 0.16 255)',
+    scrollThumb: '#3a3a44',
+    radius: '5px',
+    radiusSm: '3px',
+  },
+} as const
+
+export type Theme = (typeof THEMES)[keyof typeof THEMES]
+
+export type AgentName = 'Planner' | 'Art Director' | 'Implementor'
+export type AgentStatus = 'done' | 'running' | 'pending'
+export type SceneStatus = 'done' | 'building' | 'pending' | 'error'
+
+export const AGENT_COLORS: Record<AgentName, string> = {
+  Planner: 'oklch(0.74 0.18 340)',
+  'Art Director': 'oklch(0.74 0.18 60)',
+  Implementor: 'oklch(0.74 0.18 255)',
+}

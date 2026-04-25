@@ -1,0 +1,298 @@
+.mock-tour,
+.mock-tour-final {
+  position: absolute;
+  inset: 0;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.mock-tour {
+  display: flex;
+}
+
+.mock-tour-final {
+  background: #0d1117;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mock-tour-final-copy {
+  text-align: center;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.mock-tour-final-copy > div {
+  font-size: 15px;
+  font-weight: 500;
+  color: #c9d1d9;
+  line-height: 1.7;
+  letter-spacing: -0.01em;
+}
+
+.mock-tour-code-pane {
+  width: 48%;
+  background: #0d1117;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mock-tour-window-bar {
+  height: 26px;
+  background: #161b22;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  gap: 8px;
+  border-bottom: 1px solid #21262d;
+  flex-shrink: 0;
+}
+
+.mock-tour-window-bar > span {
+  flex: 1;
+  text-align: center;
+  font-size: 9px;
+  color: #6e7681;
+}
+
+.mock-tour-window-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.mock-tour-window-dots > div {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.mock-tour-code-block {
+  flex: 1;
+  padding: 14px 0;
+}
+
+.mock-tour-code-line {
+  display: flex;
+  align-items: flex-start;
+  padding: 2px 0;
+  border-left: 2px solid transparent;
+}
+
+.mock-tour-code-line.is-highlighted {
+  background: oklch(0.52 0.14 255 / 0.12);
+  border-left-color: oklch(0.68 0.2 255);
+}
+
+.mock-tour-line-number {
+  width: 34px;
+  padding-right: 10px;
+  text-align: right;
+  color: #3c4048;
+  font-size: 9.5px;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.mock-tour-token {
+  font-size: 11px;
+  line-height: 1.85;
+  white-space: pre;
+}
+
+.mock-tour-token--kw {
+  color: #ff7b72;
+}
+
+.mock-tour-token--tag {
+  color: #79c0ff;
+}
+
+.mock-tour-token--text {
+  color: #e6edf3;
+}
+
+.mock-tour-token--sym {
+  color: #8b949e;
+}
+
+.mock-tour-token--expr {
+  color: #ffa657;
+}
+
+.mock-tour-cursor-line {
+  display: flex;
+  padding: 2px 0;
+}
+
+.mock-tour-cursor-line > span:first-child {
+  width: 34px;
+  flex-shrink: 0;
+}
+
+.mock-tour-cursor-line > span:last-child {
+  width: 6px;
+  height: 13px;
+  background: oklch(0.68 0.2 255 / 0.7);
+  display: inline-block;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.mock-tour-preview-pane {
+  flex: 1;
+  background: #fafaf8;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.mock-tour-preview-label {
+  padding: 6px 12px;
+  border-bottom: 1px solid #e8e4df;
+  font-size: 9px;
+  color: #b0a89e;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.mock-tour-preview-stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.mock-tour-overlay {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgb(255 255 255 / 95%);
+  border: 1px solid #1a1816;
+  border-radius: 4px;
+  padding: 5px 12px;
+  font-size: 9.5px;
+  color: #1a1816;
+  box-shadow: 2px 2px 0 #1a1816;
+  white-space: nowrap;
+}
+
+.mock-tour-button {
+  cursor: default;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.mock-tour-button--plain {
+  padding: 9px 20px;
+  background: #e8e4df;
+  border: 1px solid #c8c4be;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #1a1816;
+}
+
+.mock-tour-button--primary {
+  padding: 9px 20px;
+  background: oklch(0.45 0.16 255);
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  color: white;
+  font-weight: 600;
+  box-shadow: 0 3px 12px oklch(0.45 0.16 255 / 45%);
+}
+
+.mock-tour-button--wide {
+  padding: 9px 22px;
+}
+
+.mock-tour-button--full {
+  width: 100%;
+  padding: 7px 0;
+  font-size: 10px;
+}
+
+.mock-tour-component-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.mock-tour-component-preview--compact {
+  gap: 10px;
+}
+
+.mock-tour-component-label {
+  font-size: 10px;
+  color: oklch(0.55 0.14 255);
+  font-family: 'JetBrains Mono', monospace;
+  background: oklch(0.52 0.14 255 / 0.08);
+  border: 1px solid oklch(0.52 0.14 255 / 0.3);
+  border-radius: 4px;
+  padding: 3px 10px;
+}
+
+.mock-tour-injected-label {
+  font-size: 9px;
+  color: #b0a89e;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.mock-tour-pricing-card {
+  background: white;
+  border: 1px solid #e8e4df;
+  border-radius: 10px;
+  padding: 18px 16px;
+  width: 150px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 9%);
+}
+
+.mock-tour-pricing-plan {
+  font-size: 10px;
+  color: #928e89;
+  margin-bottom: 2px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.mock-tour-pricing-price {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1a1816;
+  line-height: 1.1;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.mock-tour-pricing-price > span {
+  font-size: 11px;
+  font-weight: 400;
+  color: #928e89;
+}
+
+.mock-tour-pricing-divider {
+  height: 1px;
+  background: #f0ede8;
+  margin: 10px 0;
+}
+
+.mock-tour-feature-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 10px;
+}
+
+.mock-tour-feature {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 9px;
+  color: #3a3530;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.mock-tour-feature > span {
+  color: #5cb85c;
+}

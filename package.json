@@ -11,6 +11,7 @@
         "dev": "bun run dev:web & bun run dev:mastra",
         "dev:web": "cd web && bun run dev",
         "dev:mastra": "cd mastra && bun run dev",
+        "build:web": "bun run --cwd web build",
         "sandbox:build": "docker build -t editing-agent-sandbox ./sandbox"
     },
     "devDependencies": {
