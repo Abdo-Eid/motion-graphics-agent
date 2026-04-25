@@ -86,7 +86,7 @@ Routing rule of thumb:
 ## System Architecture
 
 ```text
-TanStack Start frontend (:3000)
+Vite + React frontend (:3000)
   |- chat UI
   |- Remotion preview
   |- agent activity panel
@@ -260,7 +260,7 @@ Art Director scene design example:
 
 | Layer | Choice |
 |---|---|
-| Frontend | TanStack Start |
+| Frontend | Vite + React |
 | Preview | Remotion |
 | Agent runtime | Mastra |
 | Streaming UI | `@ai-sdk/react` |

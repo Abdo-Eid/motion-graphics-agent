@@ -8,7 +8,7 @@ Architecture, memory, RAG, and integration patterns for the editing-agent projec
 
 ```
 ┌─────────────────────────────┐     HTTP SSE      ┌──────────────────────────────┐
-│   TanStack Start (Vite)     │ ◄─────────────── │   Mastra Server (:4111)      │
+│   Vite + React (:3000)      │ ◄─────────────── │   Mastra Server (:4111)      │
 │   - Chat UI (useChat)       │                   │   - Planner agent            │
 │   - Remotion <Player>       │                   │   - Editor agent             │
 │   - Agent log               │                   │   - Motion agent             │

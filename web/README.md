@@ -1,59 +1,73 @@
-# Web Frontend
+# React + TypeScript + Vite
 
-The `web/` workspace is the TanStack Start frontend for the editing-agent project.
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-It is responsible for:
+Currently, two official plugins are available:
 
-- Chatting with the `planner-agent` through Mastra streaming endpoints
-- Rendering the live Remotion preview
-- Showing agent activity across Planner, Art Director, and Implementor
-- Surfacing generated files in a read-only viewer
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
 
-## Development
+## React Compiler
 
-From the repo root:
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-```bash
-bun run dev:web
+## Expanding the ESLint configuration
+
+If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+
+```js
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+
+      // Remove tseslint.configs.recommended and replace with this
+      tseslint.configs.recommendedTypeChecked,
+      // Alternatively, use this for stricter rules
+      tseslint.configs.strictTypeChecked,
+      // Optionally, add this for stylistic rules
+      tseslint.configs.stylisticTypeChecked,
+
+      // Other configs...
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
 ```
 
-Or from `web/`:
+You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
 
-```bash
-bun run dev
+```js
+// eslint.config.js
+import reactX from 'eslint-plugin-react-x'
+import reactDom from 'eslint-plugin-react-dom'
+
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+      // Enable lint rules for React
+      reactX.configs['recommended-typescript'],
+      // Enable lint rules for React DOM
+      reactDom.configs.recommended,
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
 ```
-
-The app runs on `http://localhost:3000`.
-
-## Backend Contract
-
-The frontend streams chat responses from Mastra, typically through:
-
-```text
-http://localhost:4111/chat/planner-agent
-```
-
-The Planner may then route work internally to the Art Director and Implementor depending on the request.
-
-## UI Responsibilities
-
-- **Chat panel**: user messages, streamed assistant replies, status states
-- **Preview panel**: Remotion `<Player>` for the current synced composition
-- **Activity panel**: agent routing and execution state
-- **File panel**: generated file tree and code viewer
-
-The frontend should remain useful even when the Mastra server or sandbox is offline by handling connection failures gracefully.
-
-## Current Stack
-
-- TanStack Start
-- React 19
-- Tailwind CSS v4
-- `@ai-sdk/react`
-- Remotion Player
-- TanStack Query
-
-## Notes
-
-- This workspace is not a generic starter anymore; repo-level docs should take precedence over upstream template guidance.
-- Repo docs in `../docs/` describe the current architecture and implementation model.

@@ -43,7 +43,7 @@ The sandbox is fully isolated. Your host app and the sandbox communicate **only 
 │  Host App (your machine)                 │
 │                                          │
 │  ┌────────────────────────────────────┐  │
-│  │ TanStack Start frontend            │  │
+│  │ Vite + React frontend              │  │
 │  │  - Chat UI                         │  │
 │  │  - Remotion Player (live preview)  │  │
 │  │  - ./preview/  ← local .tsx copies │  │

@@ -35,6 +35,6 @@ Both work, but behave slightly differently:
 | `bun add foo --cwd web` | `web/node_modules` | Same result, from root |
 | `bun add foo` (from root, no --cwd) | `node_modules` (root) | Only for root-level deps |
 
-### TanStack CLI + `--no-install`
+### Vite Scaffold + workspace installs
 
-When using `bunx @tanstack/cli create web --no-install`, the CLI skips its own install step. The first `bun add` or `bun install` you run (from inside `web/` or from root) will install all CLI-scaffolded deps into `web/node_modules`.
+When using `bunx create-vite@latest web --template react-ts`, Vite creates the `web/` package. The first `bun add` or `bun install` you run from inside `web/` or from root will install frontend dependencies into `web/node_modules`.

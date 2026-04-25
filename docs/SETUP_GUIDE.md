@@ -16,7 +16,7 @@ Overview of phases and what to set up. See docs for detailed syntax — this gui
 
 ```
 editing-agent/
-├── web/                        ← TanStack Start (port 3000)
+├── web/                        ← Vite + React (port 3000)
 │   ├── src/routes/
 │   ├── preview/                ← host-side .tsx copies
 │   └── package.json
@@ -69,18 +69,16 @@ editing-agent/
 
     See [Bun workspaces](https://bun.sh/docs/install/workspaces) for details.
 
-3. Scaffold the `web/` workspace using the TanStack Start CLI:
+3. Scaffold the `web/` workspace using Vite:
 
     ```powershell
-    bunx @tanstack/cli@latest create web --package-manager bun --no-install --no-git --add-ons shadcn,tanstack-query
+    bunx create-vite@latest web --template react-ts
     ```
 
-    See [CLI add-on decisions](#tanstack-cli-add-on-decisions) below for why these specific add-ons.
-
-4. Add Remotion and Vercel AI SDK (not available as TanStack add-ons):
+4. Add routing, data, styling, Remotion, and Vercel AI SDK dependencies:
 
     ```powershell
-    cd web && bun add remotion @remotion/player @ai-sdk/react && cd ..
+    cd web && bun add @tanstack/react-router @tanstack/react-query @tanstack/router-plugin tailwindcss @tailwindcss/vite remotion @remotion/player @ai-sdk/react && cd ..
     ```
 
 5. Initialize `mastra/` workspace using the Mastra CLI:
@@ -121,9 +119,9 @@ editing-agent/
 
 ---
 
-## Phase 2 — TanStack Start Frontend
+## Phase 2 — Vite + React Frontend
 
-The TanStack Start CLI in Phase 1 scaffolded the frontend. Remaining work:
+The Vite React scaffold in Phase 1 created the frontend. Remaining work:
 
 1. Build the full-screen layout around four panels:
 

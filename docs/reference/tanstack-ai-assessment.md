@@ -8,7 +8,7 @@
 
 ## TanStack AI Overview
 
-TanStack AI (`@tanstack/ai@0.10.1`, alpha) is a provider-agnostic, type-safe AI SDK with first-class TanStack Start integration.
+TanStack AI (`@tanstack/ai@0.10.1`, alpha) is a provider-agnostic, type-safe AI SDK with server-route integrations for full-stack React apps.
 
 **Core packages:**
 
@@ -27,7 +27,7 @@ TanStack AI (`@tanstack/ai@0.10.1`, alpha) is a provider-agnostic, type-safe AI 
 - Middleware system with lifecycle hooks (onChunk, onBeforeToolCall, onAfterToolCall, etc.)
 - Composable agent loop strategies (`maxIterations()`, `untilFinishReason()`, `combineStrategies()`)
 - Per-model type safety — TypeScript narrows options based on selected model
-- First-class TanStack Start integration via server routes
+- First-class server-route integration for full-stack React apps
 
 **Current state:** Alpha but maturing fast. API surface is stabilizing. Breaking changes still possible. No built-in UI components yet (headless only).
 

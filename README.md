@@ -30,7 +30,7 @@ For small follow-up edits, the Planner can route directly to the Implementor ins
 User (chat)
   |
   v
-TanStack Start (:3000)          Mastra Server (:4111)
+Vite + React (:3000)            Mastra Server (:4111)
 |- Chat panel                   |- Planner agent
 |- Remotion <Player>            |- Art Director agent
 |- Agent activity log           |- Implementor agent
@@ -51,7 +51,7 @@ TanStack Start (:3000)          Mastra Server (:4111)
 
 | Layer | Technology |
 |---|---|
-| Frontend | TanStack Start, React, Tailwind CSS v4 |
+| Frontend | Vite, React, Tailwind CSS v4 |
 | Video Preview | Remotion, `@remotion/player` |
 | Chat | `@ai-sdk/react` streaming from Mastra |
 | Agent Framework | Mastra (`@mastra/core`, `@mastra/ai-sdk`) |
@@ -63,7 +63,7 @@ TanStack Start (:3000)          Mastra Server (:4111)
 
 ```text
 editing-agent/
-|- web/                        TanStack Start frontend
+|- web/                        Vite + React frontend
 |  |- src/routes/              App routes
 |  |- src/components/          UI components
 |  `- README.md                Frontend-specific notes

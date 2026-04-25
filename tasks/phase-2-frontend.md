@@ -39,7 +39,7 @@ All panels should be resizable. The shell should fill the viewport, with interna
 
 | What | Package |
 |---|---|
-| Framework | `@tanstack/react-start` |
+| Framework | Vite + React |
 | Styling | `tailwindcss` v4 |
 | Chat | `@ai-sdk/react` |
 | Preview | `remotion`, `@remotion/player` |
