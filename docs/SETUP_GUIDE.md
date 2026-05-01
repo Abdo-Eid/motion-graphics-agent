@@ -157,22 +157,25 @@ Open `http://localhost:3000` and verify the shell renders.
 
 ---
 
-## Phase 3 — Mastra Agents
+## Phase 3 — Mastra Agents and Backend
 
-The Mastra CLI in Phase 1 created the `mastra/` workspace. Now build the agent system in four tasks:
+The Mastra CLI in Phase 1 created the `mastra/` workspace. Now build the agent system and the backend layers it depends on:
 
 ### Task breakdown
 
 | Order | Task | File | What to build |
 |-------|------|------|---------------|
-| 1 | Planner Agent | `tasks/phase-3-planner-agent.md` | Intake, clarification, brief generation, routing |
-| 2 | Art Director Agent | `tasks/phase-3-art-director-agent.md` | Scene design, styleContext, sceneRegistry design data |
-| 3 | Implementor Agent | `tasks/phase-3-implementor-agent.md` | Remotion code execution, sandbox tools, typecheck loop |
-| 4 | Orchestration | `tasks/phase-3-orchestration.md` | Ordering, routing, memory handoff, parallelism |
+| 1 | Memory, Knowledge, Uploads | `tasks/phase-3-memory-knowledge-uploads.md` | Workspace State + LibSQL persistence + conversation summarization + Knowledge Store + upload pipeline |
+| 2 | Planner Agent | `tasks/phase-3-planner-agent.md` | Intake, clarification, brief generation, routing |
+| 3 | Art Director Agent | `tasks/phase-3-art-director-agent.md` | Scene design, styleContext, sceneRegistry design data |
+| 4 | Implementor Agent | `tasks/phase-3-implementor-agent.md` | Remotion code execution, sandbox tools, typecheck loop |
+| 5 | Orchestration | `tasks/phase-3-orchestration.md` | Ordering, routing, memory handoff, parallelism |
+| 6 | Sandbox Service | `tasks/phase-3-sandbox-service.md` | Local Bun MCP service exposing file + exec tools |
+| 7 | MCP Client + Skills | `tasks/phase-3-mcp-client-and-skills.md` | Wire main app to sandbox; ship v1 skill docs |
 
 ### Execution order
 
-Tasks 1-3 (agents) can be built in any order since each is self-contained. Task 4 (orchestration) must be done last since it wires the agents together.
+Task 1 (memory + uploads) should come first — it's the data spine the agents read and write through. Tasks 2-4 (agents) depend on it but can be built in any order among themselves. Task 5 (orchestration) and Task 7 (MCP client) wire things together and come after the agents. Task 6 (sandbox service) can be built in parallel with the agents since it's a separate process.
 
 Within a running pipeline:
 
@@ -207,55 +210,17 @@ Verify all three agents respond:
 
 ---
 
-## Phase 4 — Sandbox Service
+## Phase 4 — Frontend Integration
 
-Build the standalone sandbox service. It runs as its own Bun process and exposes file and command-execution tools to the Implementor over MCP/HTTP. No Docker, no container.
+Turn the Phase 2 shell into a live surface: activity stream, real file tree, real Remotion preview, upload UI, connection status.
 
-Follow `tasks/phase-3-sandbox-service.md`. Key tool groups:
+Follow `tasks/phase-4-frontend-integration.md`.
 
-- read: `read_file`, `list_files`, `grep`
-- write: `write_file`, `edit_file`
-- skills: `list_skills`, `load_skill`
-- verification: `run_typecheck`
-- execution: `exec_command`, `exec_background`, `check_background`, `kill_background`
-
-`run_typecheck` is a convenience wrapper built on `exec_command`. The agent sees it as a named tool for clarity.
-
-Start the service:
-
-```bash
-bun run dev:sandbox
-```
-
-**Checkpoint:**
-
-The sandbox MCP endpoint is reachable on `http://localhost:4311/mcp`. From a quick MCP client probe (or from the Mastra app once Phase 5 wires it), the listed tools appear.
-
-See [`docs/local-sandbox-service-design.md`](local-sandbox-service-design.md) for architecture, configuration, and the full tool surface.
+**Checkpoint:** with all three services running, sending a prompt streams events into the activity panel, the file tree populates as the Implementor writes, and the preview plays the generated composition.
 
 ---
 
-## Phase 5 — Wire Implementor to Sandbox
-
-1. Start the sandbox service (`bun run dev:sandbox`).
-2. In `mastra/src/mastra/index.ts`, instantiate Mastra's `MCPClient` pointing at `SANDBOX_MCP_URL` (default `http://localhost:4311/mcp`).
-3. Discover tools from the sandbox.
-4. Inject those tools into the Implementor agent only.
-5. Pull file changes from `sandbox/.workspace/` into the frontend preview path (or have the frontend read it directly).
-
-At this point, only the Implementor should receive MCP tools. Planner and Art Director remain tool-free.
-
-> **RAG vs Memory note:** At this phase the two knowledge systems come together. **Retrieval (RAG)** handles uploaded project knowledge — docs, parsed data, asset metadata — feeding facts into the working state. **Memory** holds the active working state (brief, `styleContext`, `sceneRegistry`, errors, routing). Only the Implementor uses sandbox MCP tools; Planner and Art Director interact with retrieval and memory through their instructions, not through direct tool access.
-
-**Checkpoint:**
-
-- sandbox reachable on `:4311`
-- Mastra reachable on `:4111`
-- Implementor can list and call discovered MCP tools
-
----
-
-## Phase 6 — End-to-End Smoke Test
+## Phase 5 — End-to-End Smoke Test
 
 1. Start the sandbox service.
 2. Start the frontend and Mastra server.
@@ -279,10 +244,9 @@ This launches sandbox, mastra, and web in parallel.
 |---|---|---|
 | 1 | `bun install` | Workspace is valid |
 | 2 | Frontend on `:3000` | UI builds and renders |
-| 3 | Mastra on `:4111` | Agents are registered |
-| 4 | Sandbox on `:4311` | Local MCP service boundary works |
-| 5 | Implementor sees tools | MCP tool injection works |
-| 6 | Prompt flows through system | End-to-end loop works |
+| 3 | Mastra on `:4111`, sandbox on `:4311`, agents respond, MCP client discovers tools | Backend layers are wired |
+| 4 | Activity events stream, file tree + preview live-update | Frontend integration works |
+| 5 | Prompt flows through system end-to-end | Full loop works |
 
 ---
 
