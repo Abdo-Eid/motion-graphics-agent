@@ -212,6 +212,9 @@ Build the sandbox image and expose an MCP server from inside the container.
 - write: `edit_file`, `create_file`
 - skills: `list_skills`, `load_skill`
 - verification: `run_typecheck`, `run_render_check`
+- execution: `exec_command`, `exec_background`, `check_background`, `kill_background`
+
+`run_typecheck` and `run_render_check` are convenience wrappers built on `exec_command`. The agent sees them as named tools for clarity. The execution tools (`exec_command`, `exec_background`, `check_background`, `kill_background`) are the 4 real implementations.
 
 2. Build the image:
 

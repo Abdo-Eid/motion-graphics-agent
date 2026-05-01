@@ -59,7 +59,8 @@ The sandbox is fully isolated. Your host app and the sandbox communicate **only 
 │                                          │
 │  ┌────────────────────────────────────┐  │
 │  │ MCP server (exposes tools)         │  │
-│  │  - read_file, edit_file, exec, …   │  │
+│  │  - read_file, edit_file, create,   │  │
+│  │    grep, exec_command, exec_bg, …  │  │
 │  │  - get_pending_changes (for sync)  │  │
 │  └────────────────┬───────────────────┘  │
 │                   │                      │
@@ -129,13 +130,33 @@ docker build -t my-agent-sandbox ./sandbox
 
 The MCP server is the **only thing** the host can talk to. It exposes the tools (`read_file`, `edit_file`, `exec`, etc.) over HTTP.
 
+### Full Tool List
+
+| Tool | Purpose | Built on |
+|---|---|---|
+| `read_file` | Read a file from workspace | — |
+| `edit_file` | Patch-edit a file (search/replace) | — |
+| `create_file` | Create a new file | — |
+| `list_files` | List directory contents | — |
+| `grep` | Search file contents | — |
+| `list_skills` | List available skill docs | — |
+| `load_skill` | Load a skill's SKILL.md | — |
+| `run_typecheck` | Run typecheck on workspace | `exec_command` |
+| `run_render_check` | Run quick render validation | `exec_command` |
+| `exec_command` | Run shell command (blocking) | — |
+| `start_process` | Start a long-running command | — |
+| `get_process_output` | Poll process output and status | — |
+| `kill_process` | Stop a running process | — |
+
+13 tools total. 4 real execution implementations (`exec_command`, `start_process`, `get_process_output`, `kill_process`). `run_typecheck` and `run_render_check` are convenience wrappers so the agent gets clear named tools for common operations.
+
 ```tsx
 // sandbox/mcp-server/index.ts — runs INSIDE the container
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { z } from 'zod'
 import * as fs from 'node:fs/promises'
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createServer } from 'node:http'
 
@@ -199,8 +220,7 @@ server.tool('create_file', { path: z.string(), content: z.string() }, async ({ p
   return { content: [{ type: 'text', text: 'ok' }] }
 })
 
-server.tool(
-  'exec',
+server.tool('exec_command',
   { command: z.string(), args: z.array(z.string()).optional() },
   async ({ command, args = [] }) => {
     const { stdout, stderr } = await exec(command, args, { cwd: WORKSPACE }).catch((e) => ({
@@ -211,6 +231,54 @@ server.tool(
   },
 )
 
+// Background process tracking
+const backgroundProcesses = new Map<string, { child: any; stdout: string[]; stderr: string[] }>()
+let nextPid = 1
+
+server.tool('start_process',
+  { command: z.string(), args: z.array(z.string()).optional() },
+  async ({ command, args = [] }) => {
+    const pid = String(nextPid++)
+    const child = spawn(command, args, { cwd: WORKSPACE })
+    const stdout: string[] = []
+    const stderr: string[] = []
+    child.stdout?.on('data', (d) => stdout.push(d.toString()))
+    child.stderr?.on('data', (d) => stderr.push(d.toString()))
+    child.on('close', () => backgroundProcesses.delete(pid))
+    backgroundProcesses.set(pid, { child, stdout, stderr })
+    return { content: [{ type: 'text', text: JSON.stringify({ pid, status: 'running' }) }] }
+  },
+)
+
+server.tool('get_process_output',
+  { pid: z.string() },
+  async ({ pid }) => {
+    const proc = backgroundProcesses.get(pid)
+    if (!proc) return { content: [{ type: 'text', text: JSON.stringify({ error: 'process not found' }) }], isError: true }
+    const exitCode = proc.child.exitCode
+    return {
+      content: [{ type: 'text', text: JSON.stringify({
+        pid,
+        status: exitCode === null ? 'running' : 'done',
+        exitCode,
+        stdout: proc.stdout.join(''),
+        stderr: proc.stderr.join(''),
+      }) }],
+    }
+  },
+)
+
+server.tool('kill_process',
+  { pid: z.string() },
+  async ({ pid }) => {
+    const proc = backgroundProcesses.get(pid)
+    if (!proc) return { content: [{ type: 'text', text: JSON.stringify({ error: 'process not found' }) }], isError: true }
+    proc.child.kill()
+    backgroundProcesses.delete(pid)
+    return { content: [{ type: 'text', text: JSON.stringify({ pid, status: 'killed' }) }] }
+  },
+)
+
 // Called by the host after each agent turn to pull accumulated file changes
 server.tool('get_pending_changes', {}, async () => {
   const changes = [...pendingChanges]
@@ -218,7 +286,7 @@ server.tool('get_pending_changes', {}, async () => {
   return { content: [{ type: 'text', text: JSON.stringify(changes) }] }
 })
 
-// ... list_files, grep, list_skills, load_skill, run_typecheck, run_render_check
+// ... list_files, grep, list_skills, load_skill
 
 const transport = new StreamableHTTPServerTransport({
   sessionIdGenerator: () => crypto.randomUUID(),
@@ -335,9 +403,27 @@ The agent has no idea Docker exists. It only sees MCP tools. Swap `localhost:300
 
 ---
 
+# MCP at the Agent Layer, SDK at the Docker Layer
+
+The MCP server is the agent-facing boundary. Underneath, it uses an **SDK** (or the Docker CLI through `dockerode`) to actually control the container — start it, stop it, exec commands, manage processes, and read/write files.
+
+```text
+Agent -> MCP tools (read_file, execute_command, ...)
+            -> MCP server inside the container
+                -> Docker SDK / dockerode / shell -> /workspace
+```
+
+So MCP is the protocol the agent speaks. The SDK is how the sandbox is actually driven. The same shape applies if Docker is later replaced by a hosted provider:
+
+```text
+Agent -> same MCP tools
+            -> MCP server
+                -> E2B SDK / Daytona SDK / provider API
+```
+
 # Bonus: MCP-compatible from Day 1
 
-Because the sandbox already exposes MCP, **any** MCP-compatible client can use it — Claude Desktop, Cursor, VS Code agent mode, all of them. Drop the URL into their config and the sandbox becomes a usable tool.
+Because the sandbox already exposes MCP, **any** MCP-compatible client can use it — Claude Desktop, Cursor, VS Code agent mode, OpenCode, all of them. Drop the URL into their config and the sandbox becomes a usable tool. MCP is an open protocol, not a Mastra-only feature, so this sandbox is not locked to one agent framework.
 
 ---
 
@@ -382,20 +468,11 @@ CMD ["node", "/home/agent/mcp-server/index.js"]
 These live inside the MCP server, alongside the generic ones:
 
 ```tsx
+// Convenience wrappers built on exec_command
 server.tool('run_typecheck', {}, async () => {
   const { stdout, stderr } = await exec('npx', ['tsc', '--noEmit'], { cwd: WORKSPACE })
     .catch((e) => ({ stdout: e.stdout ?? '', stderr: e.stderr ?? '' }))
   return { content: [{ type: 'text', text: parseTypeScriptErrors(stdout + stderr) }] }
-})
-
-server.tool('list_skills', {}, async () => {
-  const files = await fs.readdir('/.skills')
-  return { content: [{ type: 'text', text: JSON.stringify(files.filter(f => f.endsWith('.md'))) }] }
-})
-
-server.tool('load_skill', { name: z.string() }, async ({ name }) => {
-  const content = await fs.readFile(`/.skills/${name}.md`, 'utf-8')
-  return { content: [{ type: 'text', text: content }] }
 })
 
 server.tool('run_render_check', {}, async () => {
@@ -407,6 +484,16 @@ server.tool('run_render_check', {}, async () => {
   return {
     content: [{ type: 'text', text: JSON.stringify({ success: result.code === 0, errors: result.stderr }) }],
   }
+})
+
+server.tool('list_skills', {}, async () => {
+  const files = await fs.readdir('/.skills')
+  return { content: [{ type: 'text', text: JSON.stringify(files.filter(f => f.endsWith('.md'))) }] }
+})
+
+server.tool('load_skill', { name: z.string() }, async ({ name }) => {
+  const content = await fs.readFile(`/.skills/${name}.md`, 'utf-8')
+  return { content: [{ type: 'text', text: content }] }
 })
 ```
 

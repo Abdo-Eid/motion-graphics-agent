@@ -145,6 +145,9 @@ Expected tool families:
 - Write: `edit_file`, `create_file`
 - Skills: `list_skills`, `load_skill`
 - Verification: `run_typecheck`, `run_render_check`
+- Execution: `exec_command`, `exec_background`, `check_background`, `kill_background`
+
+`run_typecheck` and `run_render_check` are convenience wrappers that use `exec_command` internally. The agent sees them as named tools for clarity.
 
 ## Project State: Three Layers
 

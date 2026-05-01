@@ -84,6 +84,21 @@ When MCP wiring is added, the Implementor should use tools like:
 - `load_skill`
 - `run_typecheck`
 - `run_render_check`
+- `exec_command`
+- `exec_background`
+- `check_background`
+- `kill_background`
+
+Tool hierarchy:
+
+| Tool | Purpose | Built on |
+|---|---|---|
+| `run_typecheck` | Run typecheck on workspace | `exec_command` |
+| `run_render_check` | Run quick render validation | `exec_command` |
+| `exec_command` | Run shell command (blocking) | — |
+| `exec_background` | Run shell command (non-blocking) | — |
+| `check_background` | Poll background process by ID | — |
+| `kill_background` | Kill a background process by ID | — |
 
 This is the only role that should use sandbox tools.
 
