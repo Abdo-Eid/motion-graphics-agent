@@ -73,7 +73,9 @@ Implementation rules:
 
 ## Tools
 
-When MCP wiring is added, the Implementor should use tools like:
+The Implementor connects to the **Sandbox Service** — a separate local Bun process that exposes its tools over MCP (HTTP, default `http://localhost:4311/mcp`). The main app uses Mastra's `MCPClient` to attach those tools to this agent only. There is no Docker, no container — the sandbox runs directly on the host. See [`docs/local-sandbox-service-design.md`](../docs/local-sandbox-service-design.md) and [`phase-3-sandbox-service.md`](phase-3-sandbox-service.md).
+
+The MCP tool surface the agent should use:
 
 - `read_file`
 - `edit_file`
@@ -120,6 +122,7 @@ Until tools are wired in, a descriptive response is acceptable.
 
 ## Reference
 
-- `docs/Building a Local Docker Sandbox for Agentic Apps.md`
+- [`docs/local-sandbox-service-design.md`](../docs/local-sandbox-service-design.md) — sandbox service architecture, MCP tool surface, local provider
+- [`phase-3-sandbox-service.md`](phase-3-sandbox-service.md) — concrete steps to build the sandbox service
 - `docs/SETUP_GUIDE.md`
 - [`phase-3-orchestration.md`](phase-3-orchestration.md) — ordering, routing, memory handoff, parallelism

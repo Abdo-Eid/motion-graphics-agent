@@ -1,6 +1,9 @@
 # dependencies (bun install)
 node_modules
 
+# sandbox runtime workspace
+sandbox/.workspace/
+
 # output
 out
 dist

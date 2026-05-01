@@ -87,7 +87,7 @@ Editing Agent is organized as a monorepo with three major runtime areas:
 
 - Frontend web application.
 - Backend agent server.
-- Local sandbox for code execution and verification.
+- Local sandbox service for code execution and verification (a separate Bun process, no Docker).
 
 The architecture separates user experience, agent reasoning, and code execution into different layers. This keeps responsibilities clear and reduces risk.
 
@@ -117,7 +117,7 @@ The architecture separates user experience, agent reasoning, and code execution 
                                            │ file / verify tools
                                            ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                            Local Sandbox                                    │
+│                Local Sandbox Service (separate Bun process, MCP/HTTP)       │
 │   ┌──────────┐   ┌──────────────┐   ┌──────────────┐   ┌────────────────┐   │
 │   │  Files   │   │    Skills    │   │  Typecheck   │   │   Remotion     │   │
 │   │  (R/W)   │   │  (on-demand) │   │   / Render   │   │   Workspace    │   │
@@ -463,8 +463,8 @@ The project uses a modern TypeScript-based stack.
 | Agent framework | Mastra |
 | Workspace state | Mastra memory and LibSQL concepts |
 | Knowledge store | Vector index for large uploaded docs (queried on demand) |
-| Execution boundary | Local Docker sandbox |
-| Tool protocol | MCP-style tools |
+| Execution boundary | Local sandbox service (separate Bun process, no Docker) |
+| Tool protocol | MCP (HTTP) between main app and sandbox service |
 | Package management | Bun workspaces |
 
 This stack supports a local development workflow where the frontend, backend, and sandbox can run as separate cooperating services.

@@ -6,9 +6,11 @@ Overview of phases and what to set up. See docs for detailed syntax — this gui
 
 ## Prerequisites
 
-- **Bun**: [bun.sh](https://bun.sh) — used as the package manager throughout this guide
-- **Docker Desktop**: [docs.docker.com](https://docs.docker.com/desktop)
-- **LLM API key**: This guide uses [Z.AI (Zhipu/GLM)](https://open.bigmodel.cn) with `zhipu-ai-sdk-provider`. Swap for any [AI SDK provider](https://sdk.vercel.ai) (OpenAI, Anthropic, Google, etc.) if preferred.
+- **Bun**: [bun.sh](https://bun.sh) — used as the package manager throughout this guide.
+- **Node.js 22.13+** — required by Mastra.
+- **LLM API key**: This guide uses [Z.AI (Zhipu/GLM)](https://open.bigmodel.cn) with Mastra's built-in `zai-coding-plan` provider. Swap for any [AI SDK provider](https://sdk.vercel.ai) (OpenAI, Anthropic, Google, etc.) if preferred.
+
+No Docker required. The sandbox runs as a local Bun process — see [`local-sandbox-service-design.md`](local-sandbox-service-design.md).
 
 ---
 
@@ -21,18 +23,21 @@ editing-agent/
 │   ├── preview/                ← host-side .tsx copies
 │   └── package.json
 ├── mastra/                     ← Mastra server (port 4111)
-│   ├── src/
-│   │   ├── agents/             ← planner, art-director, implementor stubs
-│   │   ├── sandbox/            ← SandboxSession class
-│   │   └── index.ts            ← Mastra + chatRoute
+│   ├── src/mastra/
+│   │   ├── agents/             ← planner, art-director, implementor
+│   │   ├── memory/             ← shared workspace state
+│   │   └── index.ts            ← Mastra + chatRoute + MCPClient wiring
 │   └── package.json
-├── sandbox/
-│   ├── Dockerfile
-│   ├── mcp-server/             ← MCP tools (read/edit/exec)
-│   ├── remotion-deps/
-│   └── skills/                 ← remotion.md, transitions.md, etc.
-├── package.json                ← workspaces
-└── .env                        ← LLM_API_KEY, DOCKER_IMAGE, SANDBOX_PORT
+├── sandbox/                    ← Sandbox service (port 4311)
+│   ├── src/
+│   │   ├── index.ts            ← MCPServer over HTTP
+│   │   ├── provider/           ← LocalProvider (fs + child_process)
+│   │   └── tools/              ← read_file, write_file, exec_command, ...
+│   ├── skills/                 ← markdown skill docs
+│   ├── .workspace/             ← gitignored, generated project files
+│   └── package.json
+├── package.json                ← Bun workspaces (web, mastra, sandbox)
+└── .env                        ← LLM key + service URLs
 ```
 
 ---
@@ -42,7 +47,7 @@ editing-agent/
 1. Create directories (PowerShell):
 
     ```powershell
-    New-Item -ItemType Directory -Force -Path mastra, sandbox/mcp-server, sandbox/skills
+    New-Item -ItemType Directory -Force -Path mastra, sandbox/src, sandbox/skills
     ```
 
 2. Initialize root `package.json` and define workspaces:
@@ -57,12 +62,12 @@ editing-agent/
     {
         "name": "editing-agent",
         "private": true,
-        "workspaces": ["web", "mastra"],
+        "workspaces": ["web", "mastra", "sandbox"],
         "scripts": {
-            "dev": "bun run dev:web & bun run dev:mastra",
+            "dev": "bun run dev:sandbox & bun run dev:mastra & bun run dev:web",
             "dev:web": "cd web && bun run dev",
             "dev:mastra": "cd mastra && bun run dev",
-            "sandbox:build": "docker build -t editing-agent-sandbox ./sandbox"
+            "dev:sandbox": "cd sandbox && bun run dev"
         }
     }
     ```
@@ -101,14 +106,14 @@ editing-agent/
     Remove-Item -Recurse -Force web\.git -ErrorAction SilentlyContinue
     Remove-Item -Force mastra\.gitignore -ErrorAction SilentlyContinue
     ```
-    also delete the .env.example files if you want.
-    
-7. Create `.env` at root (the Mastra CLI created `mastra/.env.example` — put your actual key at root):
+
+    Also delete the `.env.example` files if you want.
+
+7. Create `.env` at root:
 
     ```
     ZHIPU_API_KEY=<your-z.ai-key>
-    DOCKER_IMAGE=editing-agent-sandbox
-    SANDBOX_PORT=3001
+    SANDBOX_MCP_URL=http://localhost:4311/mcp
     ```
 
     Mastra's built-in `zai-coding-plan` provider reads `ZHIPU_API_KEY` automatically. No provider package needed.
@@ -132,9 +137,9 @@ The Vite React scaffold in Phase 1 created the frontend. Remaining work:
 
 2. Stream chat from:
 
-```text
-http://localhost:4111/chat/planner-agent
-```
+    ```text
+    http://localhost:4111/chat/planner-agent
+    ```
 
 3. Reflect the current pipeline in the UI:
 
@@ -202,43 +207,41 @@ Verify all three agents respond:
 
 ---
 
-## Phase 4 — Docker Sandbox
+## Phase 4 — Sandbox Service
 
-Build the sandbox image and expose an MCP server from inside the container.
+Build the standalone sandbox service. It runs as its own Bun process and exposes file and command-execution tools to the Implementor over MCP/HTTP. No Docker, no container.
 
-1. Implement the sandbox tool groups:
+Follow `tasks/phase-3-sandbox-service.md`. Key tool groups:
 
 - read: `read_file`, `list_files`, `grep`
-- write: `edit_file`, `create_file`
+- write: `write_file`, `edit_file`
 - skills: `list_skills`, `load_skill`
-- verification: `run_typecheck`, `run_render_check`
+- verification: `run_typecheck`
 - execution: `exec_command`, `exec_background`, `check_background`, `kill_background`
 
-`run_typecheck` and `run_render_check` are convenience wrappers built on `exec_command`. The agent sees them as named tools for clarity. The execution tools (`exec_command`, `exec_background`, `check_background`, `kill_background`) are the 4 real implementations.
+`run_typecheck` is a convenience wrapper built on `exec_command`. The agent sees it as a named tool for clarity.
 
-2. Build the image:
+Start the service:
 
 ```bash
-bun run sandbox:build
+bun run dev:sandbox
 ```
 
 **Checkpoint:**
 
-```bash
-docker run --rm -p 3001:3001 editing-agent-sandbox
-```
+The sandbox MCP endpoint is reachable on `http://localhost:4311/mcp`. From a quick MCP client probe (or from the Mastra app once Phase 5 wires it), the listed tools appear.
 
-The container should start the MCP server successfully.
+See [`docs/local-sandbox-service-design.md`](local-sandbox-service-design.md) for architecture, configuration, and the full tool surface.
 
 ---
 
 ## Phase 5 — Wire Implementor to Sandbox
 
-1. Start the sandbox container.
-2. Connect the host to the MCP endpoint.
+1. Start the sandbox service (`bun run dev:sandbox`).
+2. In `mastra/src/mastra/index.ts`, instantiate Mastra's `MCPClient` pointing at `SANDBOX_MCP_URL` (default `http://localhost:4311/mcp`).
 3. Discover tools from the sandbox.
-4. Inject those tools into the Implementor.
-5. Pull file changes for local preview sync.
+4. Inject those tools into the Implementor agent only.
+5. Pull file changes from `sandbox/.workspace/` into the frontend preview path (or have the frontend read it directly).
 
 At this point, only the Implementor should receive MCP tools. Planner and Art Director remain tool-free.
 
@@ -246,19 +249,27 @@ At this point, only the Implementor should receive MCP tools. Planner and Art Di
 
 **Checkpoint:**
 
-- sandbox reachable on `:3001`
+- sandbox reachable on `:4311`
 - Mastra reachable on `:4111`
-- Implementor can access discovered MCP tools
+- Implementor can list and call discovered MCP tools
 
 ---
 
 ## Phase 6 — End-to-End Smoke Test
 
-1. Start the sandbox image.
+1. Start the sandbox service.
 2. Start the frontend and Mastra server.
 3. Open `http://localhost:3000`.
 4. Send a prompt.
 5. Confirm the Planner responds and downstream work appears in the activity UI.
+
+Quickest path with the root script:
+
+```bash
+bun run dev
+```
+
+This launches sandbox, mastra, and web in parallel.
 
 ---
 
@@ -269,7 +280,7 @@ At this point, only the Implementor should receive MCP tools. Planner and Art Di
 | 1 | `bun install` | Workspace is valid |
 | 2 | Frontend on `:3000` | UI builds and renders |
 | 3 | Mastra on `:4111` | Agents are registered |
-| 4 | Sandbox on `:3001` | Docker + MCP boundary works |
+| 4 | Sandbox on `:4311` | Local MCP service boundary works |
 | 5 | Implementor sees tools | MCP tool injection works |
 | 6 | Prompt flows through system | End-to-end loop works |
 
@@ -282,8 +293,8 @@ After this scaffold:
 1. Finalize Planner instructions for briefing and routing.
 2. Finalize Art Director instructions for scene design output.
 3. Finalize Implementor instructions for code generation and verification.
-4. Add file sync from sandbox output to frontend preview files.
-5. Expand shared-memory persistence and retrieval.
+4. Add file sync from `sandbox/.workspace/` to frontend preview files.
+5. Expand shared-memory persistence and retrieval (Workspace State + Knowledge Store).
 
 ---
 
@@ -291,4 +302,5 @@ After this scaffold:
 
 - [`editing agent.md`](editing%20agent.md)
 - [`project-knowledge-and-skills.md`](project-knowledge-and-skills.md)
-- [`Building a Local Docker Sandbox for Agentic Apps.md`](Building%20a%20Local%20Docker%20Sandbox%20for%20Agentic%20Apps.md)
+- [`local-sandbox-service-design.md`](local-sandbox-service-design.md)
+- [`reference/docker-sandbox-historical.md`](reference/docker-sandbox-historical.md) — rejected container-based approach (context only)

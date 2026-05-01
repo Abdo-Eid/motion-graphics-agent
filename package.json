@@ -5,14 +5,14 @@
     "private": true,
     "workspaces": [
         "web",
-        "mastra"
+        "mastra",
+        "sandbox"
     ],
     "scripts": {
-        "dev": "bun run dev:web & bun run dev:mastra",
+        "dev": "bun run dev:sandbox & bun run dev:mastra & bun run dev:web",
         "dev:web": "cd web && bun run dev",
         "dev:mastra": "cd mastra && bun run dev",
-        "build:web": "bun run --cwd web build",
-        "sandbox:build": "docker build -t editing-agent-sandbox ./sandbox"
+        "dev:sandbox": "cd sandbox && bun run dev"
     },
     "devDependencies": {
         "@types/bun": "latest"
