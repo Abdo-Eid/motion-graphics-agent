@@ -87,7 +87,7 @@ Editing Agent is organized as a monorepo with three major runtime areas:
 
 - Frontend web application.
 - Backend agent server.
-- Local sandbox for code execution and verification.
+- Local sandbox service for code execution and verification (a separate Bun process, no Docker).
 
 The architecture separates user experience, agent reasoning, and code execution into different layers. This keeps responsibilities clear and reduces risk.
 
@@ -107,17 +107,18 @@ The architecture separates user experience, agent reasoning, and code execution 
                                             ▼
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                        Backend Agent Server                                │
-│   ┌─────────┐      ┌──────────────┐      ┌─────────────┐                   │
-│   │ Planner │────▶│ Art Director │─────▶│ Implementor │                   │
-│   └─────────┘      └──────────────┘      └─────────────┘                   │
-│   ┌──────────────────────┐   ┌───────────────────────────┐                 │
-│   │    Orchestration     │   │    Memory + Retrieval     │                 │
-│   └──────────────────────┘   └───────────────────────────┘                 │
+│   ┌──────────────┐      ┌──────────────┐      ┌─────────────┐             │
+│   │   Planner    │─────▶│ Art Director │─────▶│ Implementor │             │
+│   │ (supervisor) │      │  (subagent)  │      │ (subagent)  │             │
+│   └──────────────┘      └──────────────┘      └─────────────┘             │
+│   ┌────────────────────────────────────┐   ┌──────────────────────────┐   │
+│   │  Memory + Knowledge + Event Bus    │   │  MCP client to sandbox   │   │
+│   └────────────────────────────────────┘   └──────────────────────────┘   │
 └──────────────────────────────────────────┬─────────────────────────────────┘
                                            │ file / verify tools
                                            ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                            Local Sandbox                                    │
+│                Local Sandbox Service (separate Bun process, MCP/HTTP)       │
 │   ┌──────────┐   ┌──────────────┐   ┌──────────────┐   ┌────────────────┐   │
 │   │  Files   │   │    Skills    │   │  Typecheck   │   │   Remotion     │   │
 │   │  (R/W)   │   │  (on-demand) │   │   / Render   │   │   Workspace    │   │
@@ -125,7 +126,7 @@ The architecture separates user experience, agent reasoning, and code execution 
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-The frontend never calls the AI model directly. It streams messages and status updates from the backend. The backend owns the agent workflow, routing, memory, and model calls. The sandbox is the controlled environment where generated code is read, written, and verified.
+The frontend never calls the AI model directly. It streams messages and status updates from the backend. The backend owns the agents, memory, retrieval, and model calls. The sandbox is the controlled environment where generated code is read, written, and verified.
 
 ## System Design Principles
 
@@ -182,23 +183,24 @@ The backend runs the agents and manages shared state. It receives messages, runs
 
 It is responsible for:
 
-- Running the Planner, Art Director, and Implementor in the right order.
-- Classifying follow-up requests and routing them.
-- Managing the project's workspace state and conversation context.
+- Hosting the three agents (Planner as supervisor, Art Director and Implementor as subagents).
+- Persisting the project's workspace state and conversation context.
 - Looking up project knowledge from the knowledge store when an agent asks for it.
-- Giving the Implementor access to sandbox tools.
+- Giving the Implementor access to sandbox tools through MCP.
+- Streaming activity events to the frontend.
 
-### Planner Agent
+### Planner Agent (Supervisor)
 
-The Planner is the first stop for every user request. It:
+The Planner is the entry point for every user request **and the supervisor that dispatches the other agents**. It:
 
 - Reads what the user wants.
 - Asks one focused question if important details are missing.
 - Creates a structured brief: goal, audience, tone, length, assets, and key messages.
 - Initializes the project's Workspace State.
-- Classifies follow-up requests and **decides** which route they should take.
+- Classifies follow-up requests.
+- **Delegates** to the Art Director and Implementor by calling subagent tools (`delegateToArtDirector`, `delegateToImplementor`).
 
-The Planner is the decision-maker, not the executor. It outputs a routing decision (e.g. "exact tweak → Implementor", "creative change → Art Director then Implementor"), but it does not run the next agent itself. The orchestration layer below does that.
+The Planner does not write code and does not use sandbox tools, but it does control the flow. There is no separate orchestration module — the routing rules live in the Planner's system prompt. This is deliberate: a creative video tool is a chat, and the same agent that hears the user is the one best placed to decide what runs next. The trade-off is less determinism (the LLM could hallucinate a delegation), mitigated by prompt discipline. Field ownership is still enforced by the role-guarded helpers in `mastra/src/mastra/memory/access.ts`.
 
 ### Art Director Agent
 
@@ -225,34 +227,18 @@ The Implementor writes and verifies the code. It:
 
 It is the only agent with file-editing and verification tools. It follows the Art Director's design and uses its own judgment only to fill small gaps.
 
-### Orchestration Layer
+### Delegation
 
-The orchestration layer is **not an agent**. It is the runtime glue that takes the Planner's routing decision and actually executes the pipeline reliably.
+There is no separate orchestration layer. The Planner dispatches the other agents directly via two subagent tools:
 
-It controls:
+- `delegateToArtDirector` — invokes the Art Director for scene design work.
+- `delegateToImplementor` — invokes the Implementor for one scene's code.
 
-- The order agents run in.
-- Calling the next agent based on the Planner's decision.
-- How handoffs pass between agents (brief → scene designs → code).
-- Enforcing field ownership (no agent overwrites another agent's fields).
-- Error handling and retries.
-- Progress events sent to the frontend.
+Each tool wraps a `mastra.getAgent(...).generate(...)` call, builds the right prompt from current Workspace State, and emits `agent.start` / `agent.end` events on an in-process bus that the frontend's activity stream consumes.
 
-For the MVP the pipeline runs one step at a time. The design leaves room for running scenes in parallel once their designs are finalized.
+The Planner can call these tools in **parallel** for independent scenes once their designs are finalized — the AI SDK supports parallel tool calls. Field ownership is still enforced: the role-guarded helpers in `mastra/src/mastra/memory/access.ts` reject any wrong-role write, regardless of who calls them.
 
-#### Planner vs Orchestration
-
-The split keeps responsibilities clean:
-
-| Concern | Planner | Orchestration |
-|---|---|---|
-| Understands user intent | yes | no |
-| Decides which agent should run next | yes | no |
-| Actually invokes the next agent | no | yes |
-| Manages handoffs and field ownership | no | yes |
-| Handles sequencing, errors, retries | no | yes |
-
-The Planner is the **brain** of the routing decision. The orchestration layer is the **runtime** that carries that decision out. LLMs are good at intent, code is good at deterministic control flow, so each owns what it does best.
+See [`tasks/phase-3-planner-agent.md`](tasks/phase-3-planner-agent.md) for the supervisor + delegation-tool spec.
 
 ### Project State Layers
 
@@ -463,8 +449,8 @@ The project uses a modern TypeScript-based stack.
 | Agent framework | Mastra |
 | Workspace state | Mastra memory and LibSQL concepts |
 | Knowledge store | Vector index for large uploaded docs (queried on demand) |
-| Execution boundary | Local Docker sandbox |
-| Tool protocol | MCP-style tools |
+| Execution boundary | Local sandbox service (separate Bun process, no Docker) |
+| Tool protocol | MCP (HTTP) between main app and sandbox service |
 | Package management | Bun workspaces |
 
 This stack supports a local development workflow where the frontend, backend, and sandbox can run as separate cooperating services.

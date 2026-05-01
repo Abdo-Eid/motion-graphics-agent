@@ -1,5 +1,8 @@
 # Building a Local Docker Sandbox for Agentic Apps
 
+> **Historical reference only.** The active design uses a local Mastra MCP service running directly on the host (no Docker, no images, no containers). See `docs/local-sandbox-service-design.md`. This document is kept for context on the rejected container-based approach.
+
+
 > **One-line summary:** How to build a local Docker-based sandbox to run agent-generated code — a simple, project-agnostic recipe with a worked example for the editing agent project. The sandbox runs an MCP server inside; the host connects as an MCP client. No shared filesystems.
 > 
 

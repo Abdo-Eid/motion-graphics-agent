@@ -1,10 +1,12 @@
 # Phase 3 — Art Director Agent
 
+> **Architecture note.** Invoked as a subagent by the Planner via `delegateToArtDirector`. See [`phase-3-planner-agent.md`](phase-3-planner-agent.md) for the supervisor + delegation-tool wiring.
+
 ## Your Role
 
-Build the **Art Director agent**. This role is the creative design layer between Planner and Implementor.
+Build the **Art Director agent**. The creative design layer.
 
-The Art Director turns a Planner brief into scene-by-scene design direction. It does not write code and does not use sandbox tools.
+The Art Director turns a Planner brief into scene-by-scene design direction. It does not write code and does not use sandbox tools. It is invoked through the Planner's delegation tool — the `/chat/artDirectorAgent` endpoint exists for direct testing only.
 
 ## What the Art Director Does
 
@@ -104,4 +106,4 @@ Expected result: the response should describe scene design clearly without writi
 
 - `docs/SETUP_GUIDE.md`
 - `docs/project-knowledge-and-skills.md`
-- [`phase-3-orchestration.md`](phase-3-orchestration.md) — ordering, routing, memory handoff, parallelism
+- [`phase-3-planner-agent.md`](phase-3-planner-agent.md) — supervisor + delegation tools (how the Planner invokes this agent)

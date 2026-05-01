@@ -1,5 +1,8 @@
 # AI Agent Sandboxes: A Deep Dive
 
+> **Historical reference only.** The active design uses a local Mastra MCP service running directly on the host (no Docker). See `docs/local-sandbox-service-design.md`. This document is kept for background on sandbox approaches in general.
+
+
 ## Outline
 
 1. [What Is a Sandbox?](#what-is-a-sandbox) — the basic definition and why it matters for agents.

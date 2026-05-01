@@ -16,15 +16,15 @@ The active architecture is:
 Planner -> Art Director -> Implementor
 ```
 
-### Planner
+### Planner (Supervisor)
 
-- Owns the user conversation
+- Owns the user conversation end-to-end
 - Asks clarifying questions
 - Produces a structured brief
 - Initializes and owns the project's Workspace State
-- Classifies follow-up edits and **decides** the route
+- Classifies follow-up edits and **dispatches** the next agent directly via subagent tool calls
 
-The Planner does not write code and does not use sandbox tools. It is the decision-maker, not the executor — it outputs a routing decision but does not invoke the next agent itself. The orchestration layer (see below) executes the route.
+The Planner is the supervisor. It holds the routing rules in its system prompt and invokes the Art Director and Implementor through delegation tools (`delegateToArtDirector`, `delegateToImplementor`). The Planner does not write code and does not use sandbox tools, but it does control the flow.
 
 ### Art Director
 
@@ -46,32 +46,24 @@ The Art Director is design-only. It does not write code and does not use sandbox
 
 The Implementor is the only execution agent and the only one that should use MCP tools.
 
-### Orchestration
+### Delegation
 
-The orchestration layer is **not an agent**. It is the runtime glue that takes the Planner's routing decision and executes the pipeline reliably.
+There is no separate orchestration layer. Dispatch happens inside the Planner via subagent tools:
 
-It controls:
+- `delegateToArtDirector` — invokes the Art Director agent for scene design work
+- `delegateToImplementor` — invokes the Implementor agent for a specific scene
 
-- Calling the next agent based on the Planner's routing decision
-- Sequencing handoffs (brief → scene designs → code)
-- Enforcing field ownership in Workspace State
-- Error handling and retries
-- Streaming progress events to the frontend
-- Future parallelism (e.g. parallel scene implementation once designs are finalized)
+These tools are thin wrappers around `mastra.getAgent(...).generate(...)` calls. They:
 
-#### Planner vs Orchestration
+- Build the right input prompt from current Workspace State
+- Stream the subagent's progress as `agent.*` events on the SSE bus
+- Return the subagent's textual result to the Planner so it can decide the next step
 
-| Concern | Planner | Orchestration |
-|---|---|---|
-| Understands user intent | yes | no |
-| Decides which agent runs next | yes | no |
-| Actually invokes the next agent | no | yes |
-| Manages handoffs and field ownership | no | yes |
-| Handles sequencing, errors, retries | no | yes |
+The Planner can call delegation tools **in parallel** (AI SDK supports parallel tool calls) — useful for running Implementor across multiple independent scenes at once.
 
-The Planner is the brain of the routing decision. The orchestration layer is the runtime that carries it out. This split keeps LLM-suited reasoning separate from code-suited control flow.
+Field ownership is still enforced: each subagent only gets the role-correct memory helpers (Art Director cannot call `setBrief`, Implementor cannot call `setStyleContext`, etc.). The role guards in `memory/access.ts` are the load-bearing enforcement layer.
 
-See [`tasks/phase-3-orchestration.md`](../tasks/phase-3-orchestration.md) for the full orchestration spec.
+See [`tasks/phase-3-planner-agent.md`](../tasks/phase-3-planner-agent.md) for the full supervisor + delegation-tool spec.
 
 ## Flow
 
@@ -125,19 +117,19 @@ Mastra server (:4111)
   |- implementor-agent
   `- memory and routing
 
-Docker sandbox (:3001)
-  |- MCP server
-  |- /workspace project scaffold
-  `- /.skills markdown docs
+Sandbox service (:4311)
+  |- Bun process exposing Mastra MCPServer over HTTP
+  |- .workspace/ project scaffold
+  `- skills/ markdown docs
 ```
 
-The frontend streams from Mastra with `useChat()`. The backend owns all model calls. Code execution happens inside a local Docker sandbox through MCP tools.
+The frontend streams from Mastra with `useChat()`. The backend owns all model calls. Code execution happens inside a local Bun sandbox process through MCP tools (no Docker — see [`local-sandbox-service-design.md`](local-sandbox-service-design.md)).
 
 ## Sandbox Model
 
-The sandbox is local Docker, not E2B.
+The sandbox is a separate local Bun process, not Docker, not E2B.
 
-The host starts a container, connects to the MCP server inside it, and exposes those discovered tools to the Implementor. The host also pulls file changes back for preview sync.
+The main app (Mastra) connects to the sandbox's MCP server over HTTP and exposes the discovered tools to the Implementor only. The frontend reads workspace files through Mastra read-through routes.
 
 Expected tool families:
 
@@ -149,28 +141,29 @@ Expected tool families:
 
 `run_typecheck` and `run_render_check` are convenience wrappers that use `exec_command` internally. The agent sees them as named tools for clarity.
 
-## Project State: Three Layers
+## Project State: Two Layers
 
-The project uses three project-scoped state layers. There is **no cross-session or user-level memory** in the MVP.
+The project uses two project-scoped state layers. There is **no cross-session or user-level memory** in the MVP.
 
-1. **Conversation Context** — the chat thread for this session, with rolling summarization when it gets long.
-2. **Workspace State** — the structured, mutable state of the project. Agents read and write fields like `brief`, `styleContext`, `sceneRegistry`, `assets`, `dataSummaries`, `documentSummaries`, and `routing`.
-3. **Project Knowledge Store** — chunked large documents (PDFs, brand guides) with a vector index, queried via a retrieval tool only when needed.
+1. **Conversation Context** — the chat thread for this session (Mastra thread memory, no custom summarizer).
+2. **Workspace State** — the structured, mutable state of the project. Agents read and write fields: `brief`, `styleContext`, `sceneRegistry`, and `assets`.
 
 ### How they work together
 
-1. **Workspace State is the default source of truth.** Agents read fields directly. Most upload types (small text, asset images, tiny CSVs, derived facts) land in Workspace State and never need retrieval.
-2. **The Knowledge Store is queried via tools.** When a large PDF is uploaded, its chunks live in the Knowledge Store and a short summary is mirrored into Workspace State. If an agent needs a specific detail not in the summary, it calls a retrieval tool. The returned chunks are used for that turn and are not duplicated into Workspace State.
-3. **Conversation Context flows into every turn.** Recent chat history (or its summary) is included alongside Workspace State in each agent run.
+1. **Workspace State is the default source of truth.** Agents read it directly. It holds the active project state: the brief, style decisions, scene tracking, and asset references.
+2. **Workspace files are generated outputs.** Code lives in `scenes/*.tsx`. Derived facts (e.g., data analysis results) live in `notes/` as markdown files. Agents read these with normal sandbox file tools.
+3. **The Knowledge Store is for large uploaded docs only.** When a large PDF or document is uploaded, it is chunked and indexed. Planner and Art Director can retrieve from it when needed. It is not the default — agents read from Workspace State first.
+4. **Conversation Context flows into every turn.** Recent chat history is included alongside Workspace State in each agent run.
 
 ### Rule of thumb
 
 | Need | Where to look |
 |---|---|
 | Recent user/agent messages | Conversation Context |
-| Current brief, style, scene status, assets, data facts | Workspace State |
-| A buried detail from a large uploaded doc | Knowledge Store via retrieval tool |
-| A skill snippet for implementation | Skill loader (separate from the Knowledge Store) |
+| Current brief, style, scene status, assets | Workspace State |
+| Derived facts (CSV analysis, extracted doc text) | Workspace files (`notes/`) — read directly |
+| A specific detail from a large uploaded doc | Knowledge Store via retrieval tool |
+| Implementation patterns, API reference | Knowledge Store (Remotion API, skills library indexed at startup) |
 
 See [`project-knowledge-and-skills.md`](project-knowledge-and-skills.md) for upload pipelines and [`pdf-upload-walkthrough.md`](pdf-upload-walkthrough.md) plus [`upload-walkthroughs.md`](upload-walkthroughs.md) for end-to-end traces.
 
@@ -178,11 +171,26 @@ See [`project-knowledge-and-skills.md`](project-knowledge-and-skills.md) for upl
 
 ## Workspace State Structures
 
-Workspace State is project-scoped and centered on a few core structures.
+Workspace State is project-scoped and consists of four core structures.
+
+### `brief`
+
+Owned exclusively by the Planner.
+
+Stores:
+
+- project goal
+- audience
+- tone
+- duration (in seconds)
+- key messages
+- user preferences (colors, animation feel, etc.)
+
+Once written, the brief is read by the Art Director and Implementor. It is the north star for the entire project.
 
 ### `styleContext`
 
-Owned primarily by the Art Director.
+Owned exclusively by the Art Director.
 
 Stores:
 
@@ -192,32 +200,44 @@ Stores:
 - animation feel
 - mood keywords
 
-This value is overwritten in place so it always reflects the current creative direction.
+This value is overwritten in place so it always reflects the current creative direction. It is read by the Implementor to ensure consistency across scenes.
 
 ### `sceneRegistry`
 
-Shared scene tracking record.
+Shared scene tracking record, split ownership by role.
 
-Stores:
+Stores per scene:
 
 - scene number and name
-- current design data
-- build status
-- generated file path
-- current error state
+- current design data (Art Director writes)
+- build status (Implementor writes)
+- generated file path (Implementor writes)
+- current error state (Implementor writes)
 
 Typical status flow:
 
 ```text
-not-started -> designed -> building -> built -> error
+pending -> designed -> building -> built -> error
 ```
+
+### `assets`
+
+List of uploaded asset references.
+
+Stores per asset:
+
+- id (unique identifier)
+- path (relative to `uploads/` folder)
+- description (written at upload time by VLM or multimodal model)
+
+Assets are written by the upload pipeline and read by all agents. No agent modifies this list — uploads and asset classification are handled by the upload router and Planner.
 
 ### Ownership
 
-- Planner: owns the brief, routing, and Workspace State initialization
-- Art Director: writes `styleContext` and `sceneRegistry[n].design`
-- Implementor: writes `sceneRegistry[n].status`, `.filePath`, and `.errors`
-- Upload router (orchestration): writes `assets`, `dataSummaries`, and `documentSummaries` at upload time
+- **Planner**: owns `brief` initialization and writes no other fields
+- **Art Director**: writes `styleContext` and `sceneRegistry[n].design`
+- **Implementor**: writes `sceneRegistry[n].status`, `.filePath`, and `.errors`
+- **Upload pipeline**: writes to `assets[]` at ingest time
 
 ### Mutation Rules
 
@@ -230,49 +250,63 @@ not-started -> designed -> building -> built -> error
 
 ### Output Shapes
 
-Planner brief example:
+**Brief example** (Planner writes):
 
-```json
+```ts
 {
-  "projectGoal": "30-second product demo for a note-taking app",
-  "audience": "Product managers and startup founders",
-  "tone": "Clean, professional, confident",
-  "duration": "20-30 seconds (600-900 frames at 30fps)",
-  "assets": [
-    { "type": "logo", "path": "/assets/logo.png" }
-  ],
-  "messages": [
+  goal: "30-second product demo for a note-taking app",
+  audience: "Product managers and startup founders",
+  tone: "Clean, professional, confident",
+  duration: 30,  // seconds
+  keyMessages: [
     "Capture notes instantly",
     "Organize with AI tags",
     "Share with your team"
   ],
-  "preferences": {
-    "motionFeel": "smooth, confident",
-    "colorPalette": ["#1a1a2e", "#16213e", "#e94560"]
+  userPreferences: {
+    motionFeel: "smooth, confident",
+    colorPalette: "#1a1a2e, #16213e, #e94560"
   }
 }
 ```
 
-Art Director scene design example:
+**StyleContext example** (Art Director writes):
 
-```json
+```ts
 {
-  "sceneNumber": 1,
-  "name": "Intro",
-  "duration": "150 frames (5 seconds)",
-  "purpose": "Hook the viewer with the product name and a bold visual",
-  "composition": {
-    "layout": "Centered product name, large and bold",
-    "hierarchy": "Product name is the hero. Tagline below in smaller weight."
+  palette: ["#1a1a2e", "#16213e", "#e94560"],
+  fonts: ["Inter", "Playfair Display"],
+  mood: "confident, minimal",
+  animationFeel: "smooth spring, no bounce",
+  transitions: "fade or slide, 0.3s duration"
+}
+```
+
+**Scene Registry entry** (Art Director + Implementor collaborate):
+
+```ts
+{
+  number: 1,
+  name: "Intro",
+  design: {
+    duration: "5 seconds",
+    purpose: "Hook the viewer with the product name and a bold visual",
+    composition: "Centered product name, large and bold",
+    animation: "Title fades in smoothly with a slight upward drift"
   },
-  "animation": {
-    "entrance": "Title fades in smoothly with a slight upward drift",
-    "exit": "Quick wipe to the right"
-  },
-  "acceptanceCriteria": [
-    "Title is readable within the first 30 frames",
-    "Transition into scene 2 is seamless"
-  ]
+  status: "built",  // Implementor writes
+  filePath: "scenes/01-intro.tsx",  // Implementor writes
+  errors: []  // Implementor writes
+}
+```
+
+**Asset example** (Upload pipeline writes):
+
+```ts
+{
+  id: "logo-dark-1",
+  path: "uploads/logo-dark.png",
+  description: "Primary brand logo, dark variant, transparent background, geometric sans style"
 }
 ```
 
@@ -296,9 +330,10 @@ Art Director scene design example:
 | Preview | Remotion |
 | Agent runtime | Mastra |
 | Streaming UI | `@ai-sdk/react` |
-| Workspace state | `@mastra/memory`, LibSQL |
-| Knowledge store | Vector index for large uploaded docs |
-| Sandbox | Local Docker + MCP |
+| Workspace state | `@mastra/memory` (thread memory) + simple TypeScript types |
+| State persistence | LibSQL (optional for now, Mastra memory handles MVP) |
+| Knowledge store | LibSQL vector extension (large docs + skills library + API reference) |
+| Sandbox | Local Bun process + MCP/HTTP |
 | Package manager | Bun |
 
 ## Build Phases
@@ -324,7 +359,7 @@ Art Director scene design example:
 
 ### Phase 4
 
-- Build the local Docker sandbox
+- Build the local Bun sandbox service
 - Expose MCP tools and skill loading
 - Connect preview file sync
 
@@ -366,4 +401,4 @@ Implementation conventions:
 
 - [`SETUP_GUIDE.md`](SETUP_GUIDE.md): implementation phases and checkpoints
 - [`project-knowledge-and-skills.md`](project-knowledge-and-skills.md): project knowledge routing, retrieval, uploads, and skill loading
-- [`Building a Local Docker Sandbox for Agentic Apps.md`](Building%20a%20Local%20Docker%20Sandbox%20for%20Agentic%20Apps.md): sandbox design
+- [`local-sandbox-service-design.md`](local-sandbox-service-design.md): sandbox service design

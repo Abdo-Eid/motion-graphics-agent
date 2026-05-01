@@ -2,27 +2,28 @@
 
 A multi-agent system for turning user prompts into editable Remotion code with a live preview.
 
-The current architecture is a 3-agent pipeline:
+The architecture is a supervisor + two subagents:
 
 ```text
-Planner -> Art Director -> Implementor
+Planner (supervisor) ──▶ delegateToArtDirector ──▶ Art Director
+                    └──▶ delegateToImplementor ──▶ Implementor
 ```
 
-- **Planner** handles intake, clarification, memory, and routing.
-- **Art Director** turns the brief into scene-by-scene creative direction.
-- **Implementor** uses sandbox tools to write Remotion code, styling, animations, and transitions in one pass.
+- **Planner** owns the user conversation, classifies intent, produces the brief, **and dispatches** the other agents through subagent tools.
+- **Art Director** (subagent) turns the brief into scene-by-scene creative direction.
+- **Implementor** (subagent) uses sandbox tools to write Remotion code, styling, animations, and transitions in one pass.
 
-The frontend provides chat, preview, activity, and file inspection. The backend runs Mastra agents. Code execution happens inside a local Docker sandbox exposed through MCP tools.
+There is no separate orchestration layer — the routing rules live in the Planner's system prompt. The frontend provides chat, preview, activity, and file inspection. The backend runs Mastra agents. Code execution happens in a local Bun sandbox process exposed through MCP/HTTP — no Docker.
 
 ## How It Works
 
 1. The user describes a video goal.
-2. The **Planner** asks clarifying questions if needed and produces a structured brief.
-3. The **Art Director** converts that brief into scene designs and updates shared style context.
-4. The **Implementor** reads the scene designs, writes Remotion code in the sandbox, runs typecheck checks, and fixes errors.
+2. The **Planner** asks clarifying questions if needed, produces a structured brief, and decides how to delegate.
+3. For creative or structural work the Planner calls `delegateToArtDirector`, which produces scene designs and updates shared style context.
+4. The Planner then calls `delegateToImplementor` (per scene, optionally in parallel). The Implementor reads scene designs, writes Remotion code in the sandbox, runs typecheck, and fixes errors.
 5. The frontend syncs the generated files for a live Remotion preview.
 
-For small follow-up edits, the Planner can route directly to the Implementor instead of re-running the full pipeline.
+For small follow-up edits, the Planner skips the Art Director and calls the Implementor directly.
 
 ## Architecture
 
@@ -31,21 +32,22 @@ User (chat)
   |
   v
 Vite + React (:3000)            Mastra Server (:4111)
-|- Chat panel                   |- Planner agent
-|- Remotion <Player>            |- Art Director agent
-|- Agent activity log           |- Implementor agent
-`- File tree viewer             `- Shared/private memory
+|- Chat panel                   |- Planner (supervisor)
+|- Remotion <Player>            |- Art Director (subagent)
+|- Agent activity log           |- Implementor (subagent)
+`- File tree viewer             `- Memory + Knowledge + Event bus
                                      |
                                      v
-                            Docker Sandbox (:3001)
-                            |- MCP server (read/edit/exec tools)
-                            |- Remotion project scaffold
-                            `- Skills (.skills/*.md)
+                            Sandbox Service (:4311)
+                            |- Local Bun process
+                            |- MCP server over HTTP (read/edit/exec tools)
+                            |- Remotion project scaffold (.workspace/)
+                            `- Skills (skills/*.md)
 ```
 
 - **Frontend** streams from Mastra with `useChat()`. It does not call an LLM directly.
-- **Mastra** owns agent orchestration, routing, and memory.
-- **Docker + MCP** is the execution boundary for file reads, edits, and verification.
+- **Mastra** hosts the agents, memory, and the event bus. Dispatch happens inside the Planner via subagent tool calls.
+- **Sandbox + MCP** is the execution boundary for file reads, edits, and verification — a separate Bun process, no Docker.
 
 ## Tech Stack
 
@@ -56,7 +58,7 @@ Vite + React (:3000)            Mastra Server (:4111)
 | Chat | `@ai-sdk/react` streaming from Mastra |
 | Agent Framework | Mastra (`@mastra/core`, `@mastra/ai-sdk`) |
 | Memory | `@mastra/memory`, `@mastra/libsql` |
-| Sandbox | Local Docker container with MCP server |
+| Sandbox | Local Bun process with MCP server (HTTP) |
 | Package Manager | Bun workspaces |
 
 ## Project Structure
@@ -72,10 +74,13 @@ editing-agent/
 |  |  |- agents/               planner, art-director, implementor
 |  |  `- index.ts              Mastra registration
 |  `- README.md                Backend-specific notes
-|- sandbox/                    Local Docker sandbox
-|  |- Dockerfile
-|  |- mcp-server/
-|  `- skills/
+|- sandbox/                    Local Bun sandbox service
+|  |- src/
+|  |  |- index.ts              MCPServer over HTTP
+|  |  |- provider/             LocalProvider (fs + child_process)
+|  |  `- tools/                read_file, write_file, exec_command, ...
+|  |- .workspace/              gitignored, generated project files
+|  `- skills/                  markdown skill docs
 |- docs/
 |  |- reference/
 |  |  `- multi-agent-architecture.md
@@ -95,8 +100,10 @@ editing-agent/
 ### Prerequisites
 
 - [Bun](https://bun.sh)
-- [Docker Desktop](https://docs.docker.com/desktop)
+- Node.js 22.13+ (Mastra requirement)
 - Z.AI API key for Mastra (`ZHIPU_API_KEY`)
+
+No Docker required.
 
 ### Environment
 
@@ -104,41 +111,41 @@ Create `.env` at the repo root:
 
 ```env
 ZHIPU_API_KEY=<your-key>
-DOCKER_IMAGE=editing-agent-sandbox
-SANDBOX_PORT=3001
+SANDBOX_MCP_URL=http://localhost:4311/mcp
 ```
 
 ### Development
 
 ```bash
 bun install
-bun run sandbox:build
 bun run dev
 ```
 
 Useful commands:
 
 ```bash
-bun run dev:web
-bun run dev:mastra
-bun run sandbox:build
+bun run dev:web      # http://localhost:3000
+bun run dev:mastra   # http://localhost:4111
+bun run dev:sandbox  # http://localhost:4311
 ```
 
 ## Documentation
 
 | Document | Description |
 |---|---|
-| [`docs/reference/multi-agent-architecture.md`](docs/reference/multi-agent-architecture.md) | Architecture decision doc for the Planner / Art Director / Implementor split |
+| [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md) | Product vision, architecture, agent responsibilities |
+| [`AGENTS.md`](AGENTS.md) | Rules for AI coding agents working in this repo |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Task board, dependency graph, suggested allocation |
 | [`docs/SETUP_GUIDE.md`](docs/SETUP_GUIDE.md) | Phase-by-phase setup and implementation checkpoints |
-| [`docs/editing agent.md`](docs/editing%20agent.md) | Product and system overview aligned to the current architecture |
+| [`docs/editing agent.md`](docs/editing%20agent.md) | Architecture details, routing rules, memory structures |
 | [`docs/project-knowledge-and-skills.md`](docs/project-knowledge-and-skills.md) | Project knowledge routing, retrieval, uploads, and staged skill loading |
-| [`docs/Building a Local Docker Sandbox for Agentic Apps.md`](docs/Building%20a%20Local%20Docker%20Sandbox%20for%20Agentic%20Apps.md) | Local Docker + MCP sandbox design |
+| [`docs/local-sandbox-service-design.md`](docs/local-sandbox-service-design.md) | Local Bun sandbox + MCP design (no Docker) |
 
 ## Status
 
-`docs/reference/multi-agent-architecture.md` is kept as the architecture decision record.
+Phase 1 (monorepo scaffold) and Phase 2 (frontend shell, static) are done. Phase 3 (backend) is in progress — see `CONTRIBUTING.md`.
 
-`docs/reference/` contains historical and external reference material and is intentionally left unchanged.
+`docs/reference/` contains historical and external reference material and is intentionally frozen.
 
 ## License
 
