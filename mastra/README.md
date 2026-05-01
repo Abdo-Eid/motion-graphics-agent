@@ -1,6 +1,6 @@
 # Mastra Server
 
-The `mastra/` workspace runs the backend agent system for editing-agent.
+The `mastra/` workspace runs the backend agent system for Motion Graphics Agent.
 
 Current architecture:
 

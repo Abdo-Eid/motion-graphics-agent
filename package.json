@@ -1,5 +1,5 @@
 {
-    "name": "editing-agent",
+    "name": "motion-graphics-agent",
     "module": "index.ts",
     "type": "module",
     "private": true,

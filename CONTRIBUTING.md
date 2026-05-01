@@ -31,13 +31,7 @@ This document is the **work board**: every task, what it depends on, whether you
 
 ## Phase Overview
 
-| Phase | What | Status |
-|---|---|---|
-| 1 | Monorepo scaffold (Bun workspaces, Vite, Mastra CLI, env) | done |
-| 2 | Frontend shell — 4-panel layout (`tasks/phase-2-frontend.md`) | **done (static, mock data — not integrated)** |
-| 3 | Mastra backend (memory, agents, delegation tools, sandbox, MCP+skills) | not started |
-| 4 | Frontend integration — wire static shell to live backend (`tasks/phase-4-frontend-integration.md`) | not started |
-| 5 | End-to-end smoke (no task file — just run `bun run dev` and follow the checkpoint in `docs/SETUP_GUIDE.md`) | not started |
+For the canonical phase walkthrough (what each phase builds, the checkpoint that proves it, and the per-phase commands), see [`docs/SETUP_GUIDE.md`](docs/SETUP_GUIDE.md). Status snapshot: Phase 1 (scaffold) and Phase 2 (frontend shell, static + mock data) are done; Phase 3 (Mastra backend, sandbox, MCP) is the active work; Phase 4 wires the static shell to the live backend.
 
 > **Phase 2 status note.** The shell is built. `web/src/` already has `chat-panel.tsx`, `player-panel.tsx`, `agent-log.tsx`, `bottom-panel.tsx`, `topbar.tsx`, `mock-product-tour.tsx`, plus mock fixtures in `web/src/data/mock-data.ts`. Phase 4 replaces the mock data sources with real backend wiring — it does **not** rebuild the components.
 
@@ -45,7 +39,7 @@ This document is the **work board**: every task, what it depends on, whether you
 
 ## Dependency Graph (Phase 3)
 
-> Architecture: Planner is the supervisor. The Art Director and Implementor are subagents invoked through delegation tools the Planner owns. There is no separate orchestrator.
+> Architecture: Planner is a Mastra supervisor agent. The Art Director and Implementor are subagents listed under `agents: { ... }`; Mastra auto-generates `agent-artDirector` / `agent-implementor` tools and runs delegations under the hood. Bus emission and invariant guards live in `delegation` hooks. There is no separate orchestrator and no hand-rolled `delegations.ts`.
 
 ```
                 ┌──────────────────────────┐
@@ -59,7 +53,7 @@ This document is the **work board**: every task, what it depends on, whether you
  │ T3 Art Dir   │      │ T4 Implementor│     │ T2 Planner   │
  │  (subagent)  │      │  (subagent)  │      │ (supervisor +│
  └──────┬───────┘      └──────┬───────┘      │  delegation  │
-        │                     │              │  tools + bus)│
+        │                     │              │  hooks + bus)│
         └─────────┬───────────┘              └──────┬───────┘
                   ▼                                 │
                   └─────────────────────────────────┘
@@ -85,7 +79,7 @@ What's parallel-safe:
 What's sequential:
 
 - T1 must land first (every agent reads/writes through its access helpers).
-- T2 (Planner / supervisor + delegation tools) needs T3 and T4 to exist (it dispatches into them). So in practice: T3 + T4 in parallel, then T2 wires them as subagents.
+- T2 (Planner / supervisor + `delegation` hooks) needs T3 and T4 to exist (it dispatches into them). So in practice: T3 + T4 in parallel, then T2 wires them as subagents under `agents: { ... }`.
 - T7 needs T6 reachable to prove discovery; skill markdown content can be written before T6 is done.
 
 ---
@@ -96,23 +90,41 @@ Each card: **what · who can start · prereqs · files · how to begin · checkp
 
 ### T1 — Memory, Knowledge Store, Uploads
 
-- **Spec**: `tasks/phase-3-memory-knowledge-uploads.md`
-- **What**: Workspace State (zod schemas + LibSQL store + role-guarded access helpers), conversation rolling summarizer, Project Knowledge Store (LibSQL vector + chunker + embeddings + retrieval tool), upload pipeline (`POST /uploads` + per-type handlers).
-- **Start now?** Yes. No prereqs.
-- **Files** (all new): `mastra/src/mastra/memory/{schema,store,access,summarizer,index}.ts`, `mastra/src/mastra/knowledge/{store,embeddings,chunker,retrieve}.ts`, `mastra/src/mastra/uploads/{router,ingest}.ts`, `mastra/src/mastra/uploads/handlers/{pdf,csv,image,text,asset}.ts`.
-- **Begin**: read the schema section + field-ownership table in the spec, then scaffold `memory/schema.ts` and `memory/store.ts` first. Wire one helper end-to-end (`setBrief`) before adding the rest.
-- **Checkpoint**: 5 numbered tests at the bottom of the spec — memory roundtrip, summarization, PDF upload → DocumentSummary + chunks, logo upload → Asset + file copy, CSV → DataSummary.
-- **Docs**: <https://mastra.ai/docs/memory/overview>, <https://mastra.ai/docs/rag/overview>, <https://docs.turso.tech/sdk/ts/quickstart>, <https://zod.dev>.
+T1 splits into two parallelizable tracks. Overview lives in `tasks/phase-3-memory-knowledge-uploads.md`. Each track has its own spec, files, env vars, and checkpoints.
 
-### T2 — Planner Agent (Supervisor) + Delegation Tools
+#### T1A — Memory & Workspace State
+
+- **Spec**: `tasks/phase-3-memory-and-state.md`
+- **What**: Workspace State as Mastra working memory (zod schema + role-guarded setter tools `setBrief` / `setStyleContext` / `setSceneDesign` / `addAsset`); conversation history compressed by Mastra's Observational Memory (no hand-rolled summarizer).
+- **Start now?** Yes. No prereqs.
+- **Files** (all new): `mastra/src/mastra/memory/{schema,index,access}.ts`.
+- **Begin**: lock the `Asset` zod shape with the T1B owner first, then scaffold `memory/schema.ts` and `memory/index.ts` (configured `Memory` instance with working memory + observational memory). Wire `setBrief` end-to-end before adding the rest.
+- **Checkpoint**: memory roundtrip + role rejection, conversation compression with brief surviving.
+- **Docs**: <https://mastra.ai/docs/memory/overview>, <https://mastra.ai/docs/memory/working-memory>, <https://mastra.ai/docs/memory/observational-memory>, <https://docs.turso.tech/sdk/ts/quickstart>, <https://zod.dev>.
+
+#### T1B — Knowledge Store & Uploads
+
+- **Spec**: `tasks/phase-3-knowledge-and-uploads.md`
+- **What**: Project Knowledge Store (`LibSQLVector` + chunker + embeddings + `retrieveProjectKnowledge` tool); upload pipeline (`POST /uploads` + per-type handlers registered as Mastra `apiRoutes`).
+- **Start now?** Yes — runs in parallel with T1A. Stub `addAsset` locally until T1A lands; swap to the real import at merge.
+- **Files** (all new): `mastra/src/mastra/knowledge/{store,embeddings,chunker,retrieve}.ts`, `mastra/src/mastra/uploads/{router,ingest}.ts`, `mastra/src/mastra/uploads/handlers/{pdf,csv,image,asset}.ts`. Adds `pdf-parse`, `@ai-sdk/openai`, `ai` to `mastra/package.json`.
+- **Begin**: lock the `Asset` zod shape with T1A first, then build `knowledge/embeddings.ts` + `chunker.ts` + `store.ts` against a small fixture, then the upload router with handlers in order asset → csv → image → pdf.
+- **Checkpoint**: PDF upload → chunks in Knowledge Store, image asset → `Asset` row + file copy, CSV → file copy.
+- **Docs**: <https://ai-sdk.dev/docs/ai-sdk-core/embeddings>, <https://docs.turso.tech/sdk/ts/quickstart>, <https://mastra.ai/docs/server-db/custom-api-routes>.
+
+#### Merge step (one of the two owners)
+
+Wire both outputs into `mastra/src/mastra/index.ts`: `new Mastra({ storage, agents: {}, apiRoutes: [...uploadRoutes], tools: { setBrief, setStyleContext, setSceneDesign, addAsset, retrieveProjectKnowledge } })`.
+
+### T2 — Planner Agent (Supervisor) + Subagent Delegation
 
 - **Spec**: `tasks/phase-3-planner-agent.md`
-- **What**: Three pieces shipped together. (a) The Planner agent — supervisor that owns user conversation, clarification, brief, routing classification, and **dispatches** subagents. (b) The two delegation tools (`delegateToArtDirector`, `delegateToImplementor`) that wrap `mastra.getAgent(...).generate(...)`. (c) A tiny in-process event bus (`server/bus.ts`) the Phase 4 SSE route subscribes to. Routing rules live in the Planner's instructions, not in code.
+- **What**: Two pieces shipped together. (a) The Planner agent — Mastra **supervisor** that owns user conversation, clarification, brief, routing classification, and dispatches subagents via the auto-generated `agent-artDirector` / `agent-implementor` tools (Mastra creates these from the Planner's `agents: { ... }` list). (b) A tiny in-process event bus (`server/bus.ts`) consumed by the Phase 4 SSE route, fed by the Planner's `delegation` hooks. Routing rules live in the Planner's instructions, not in code. No hand-rolled delegation tools.
 - **Start now?** Wires last — needs T1 (memory helpers + retrieval) and T3/T4 (subagents to dispatch into). Skeleton instructions and the bus can be drafted in parallel with everything else.
-- **Files**: `mastra/src/mastra/agents/planner.ts`, `mastra/src/mastra/agents/delegations.ts`, `mastra/src/mastra/server/bus.ts`, `mastra/src/mastra/index.ts` (modify — register all three agents).
-- **Begin**: build the bus first (10 lines around `EventEmitter`), then the two `createTool` wrappers, then the Planner agent with the routing table inline in its `instructions`. Register all three agents in `index.ts` to unlock the Phase 3 base checkpoint.
-- **Checkpoint**: `POST /chat/plannerAgent` with a full prompt produces `delegate_to_art_director` and `delegate_to_implementor` tool calls in the trace; with a tweak prompt, only `delegate_to_implementor` fires. Bus emits matching `agent.start` / `agent.end`.
-- **Docs**: <https://mastra.ai/docs/agents/overview>, <https://mastra.ai/docs/agents/agent-as-tools>, <https://ai-sdk.dev/docs/foundations/tools>.
+- **Files**: `mastra/src/mastra/agents/planner.ts`, `mastra/src/mastra/server/bus.ts`, `mastra/src/mastra/index.ts` (modify — register all three agents). No `delegations.ts` — Mastra auto-generates the subagent tools from the Planner's `agents: { ... }` list.
+- **Begin**: build the bus first (10 lines around `EventEmitter`), then the Planner agent with the routing table inline in its `instructions` and the two subagents wired in via `agents: { artDirector, implementor }`. Add `delegation` hooks (`onDelegationStart` / `onDelegationComplete`) that emit `agent.start` / `agent.end` on the bus and enforce the in-flight invariants. Register all three agents in `index.ts` to unlock the Phase 3 base checkpoint.
+- **Checkpoint**: `POST /chat/plannerAgent` with a full prompt produces `agent-artDirector` and `agent-implementor` tool calls in the trace; with a tweak prompt, only `agent-implementor` fires. Bus emits matching `agent.start` / `agent.end`.
+- **Docs**: <https://mastra.ai/docs/agents/supervisor-agents>, <https://mastra.ai/docs/agents/using-tools#agents-as-tools>, <https://mastra.ai/guides/migrations/network-to-supervisor>.
 
 ### T3 — Art Director Agent
 
@@ -182,7 +194,7 @@ Each card: **what · who can start · prereqs · files · how to begin · checkp
   - **D** Drag-and-drop upload UI in chat panel, hitting `POST /uploads` from T1.
   - **E** Connection-status badges for Mastra and Sandbox.
 - **Start now?** Phase 2 shell is already in place. Each sub-part needs different backend pieces:
-  - A needs T2 (Planner's delegation tools emit events on the bus) — replaces the mocked agent-log feed.
+  - A needs T2 (Planner's `delegation` hooks emit events on the bus) — replaces the mocked agent-log feed.
   - B needs `SANDBOX_WORKSPACE_DIR` to exist (T1 + T6) — replaces the mocked file tree in `bottom-panel.tsx`.
   - C needs T6 actually writing files — replaces `mock-product-tour.tsx` in `player-panel.tsx`.
   - D needs T1's `/uploads` route — adds the dropzone to the existing `chat-panel.tsx`.
@@ -260,7 +272,7 @@ bun run dev:sandbox  # http://localhost:4311
 1. `AGENTS.md` — rules and architecture constraints
 2. `PROJECT_OVERVIEW.md` — what we're building and why
 3. `docs/SETUP_GUIDE.md` — phases, env vars, structure
-4. `docs/editing agent.md` — agent responsibilities, routing rules, memory model
+4. `docs/architecture.md` — agent responsibilities, routing rules, memory model
 5. `docs/local-sandbox-service-design.md` — sandbox contract
 6. `docs/project-knowledge-and-skills.md` — knowledge layer + skills system
-7. `docs/pdf-upload-walkthrough.md`, `docs/upload-walkthroughs.md` — ingestion traces per file type
+7. `docs/upload-walkthroughs.md` — ingestion traces per file type (PDF, CSV, image, small text)

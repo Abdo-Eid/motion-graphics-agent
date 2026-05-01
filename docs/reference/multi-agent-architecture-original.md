@@ -1,7 +1,6 @@
 # Multi-Agent Architecture — Original Split (Legacy)
 
-> **Status:** Superseded by the revised Planner / Art Director / Implementor split
-> **Kept for reference:** documents the original Planner/Editor/Motion design
+> **Historical reference only — do not implement against this.** Documents the original Planner / Editor / Motion split which was superseded by the current Planner / Art Director / Implementor design. Kept because the "Known Issues" at the end of this doc are exactly what motivated the rewrite. For the current architecture see `PROJECT_OVERVIEW.md` and `docs/architecture.md`.
 
 ---
 

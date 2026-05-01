@@ -1,98 +1,199 @@
-# Phase 3 — Planner Agent (Supervisor) + Delegation Tools
+# Phase 3 — Planner Agent (Supervisor) + Subagent Delegation
 
 ## Your Role
 
-Build the **Planner agent** and the small wiring that lets it dispatch the Art Director and Implementor as subagents. The Planner is the supervisor: it owns the user conversation, classifies intent, produces the brief, **and** invokes the other agents directly via subagent tool calls.
+Build the **Planner agent** as a Mastra **supervisor agent**: it owns the user conversation, classifies intent, produces the brief, and dispatches the Art Director and Implementor as subagents wired through Mastra's built-in `agents: { ... }` property. Routing rules live in the Planner's system prompt — no separate orchestrator, no hand-rolled delegation tools.
 
-There is no separate orchestration module. Routing rules live in the Planner's system prompt.
+## Why Mastra's Supervisor Pattern
 
-## Why supervisor pattern (in one paragraph)
+A creative video tool is a chat. The same agent that hears the user should also decide what to do next. Mastra's supervisor pattern ([docs](https://mastra.ai/docs/agents/supervisor-agents)) expresses that directly: list other agents under `agents: { ... }`, Mastra exposes each as a tool named `agent-<key>`, the supervisor LLM calls those tools to delegate, and `delegation` hooks intercept each call to emit bus events, rewrite prompts, or stop the loop. This is the framework-recommended path — it replaces the deprecated `.network()` API ([migration guide](https://mastra.ai/guides/migrations/network-to-supervisor)).
 
-A creative video tool is a chat. The same agent that hears the user should also decide what to do next. Splitting that across an LLM (decides) and code (executes) added a hop without making the system more correct, and it blocked parallel scene work. Putting the routing rules in the Planner's prompt and letting it call delegation tools gives parallel dispatch, natural error loops, and removes a whole module of code. The trade-off is less determinism (the LLM could hallucinate a delegation), mitigated by prompt discipline and tool-call validation. Field ownership is still enforced — the role-guarded helpers in `memory/access.ts` reject any wrong-role write regardless of who calls them, so the safety story doesn't change.
+Trade-off: less determinism (the LLM could hallucinate a delegation), mitigated by prompt discipline and `onDelegationStart` rejections. Field ownership is unchanged — the role-guarded helpers in `memory/access.ts` reject wrong-role writes regardless of caller.
 
 ## What You Build
 
 ```
 mastra/src/mastra/
   agents/
-    planner.ts            ← supervisor agent
-    delegations.ts        ← delegateToArtDirector, delegateToImplementor
+    planner.ts            ← supervisor agent (lists artDirector + implementor under `agents`)
   server/
     bus.ts                ← in-process event emitter (consumed by Phase 4 SSE route)
   index.ts                ← register all three agents
 ```
+
+No `delegations.ts` file. Delegation is wiring, not code.
 
 ## Responsibilities (Planner)
 
 - Receive user intent
 - Ask clarifying questions when constraints are missing
 - Produce a structured brief (call `setBrief`)
-- Manage Workspace State (`setBrief`, `setRouting`)
-- Use RAG to retrieve relevant project knowledge from uploaded docs, data, and assets
-- **Classify follow-up edits and delegate directly** via `delegateToArtDirector` and `delegateToImplementor`
-- Watch subagent results and decide the next step (loop, retry, ask user, finish)
+- Use RAG to retrieve relevant project knowledge from uploaded docs and assets
+- **Write the full scene-by-scene plan as a chat message** before any delegation (see "Plan In Chat" below)
+- **Classify follow-up edits and delegate directly** by calling the auto-generated `agent-artDirector` and `agent-implementor` tools
+- Drive the AD↔Implementor pipeline scene-by-scene (see "Pipelined Delegation")
+- Read each subagent's returned summary and decide the next step (advance, retry, ask user, finish)
 
-The Planner does not write code and does not use sandbox tools. But it does control the flow.
+The Planner does not write code and does not use sandbox tools. Routing decisions and the scene plan are implicit in chat — not persisted as a separate field.
+
+## Plan In Chat
+
+For a fresh project, after the brief is set, the Planner writes the **whole-video plan as a normal chat message** before delegating anything. Format is informal but predictable:
+
+```
+Plan (≈20s total):
+1. Intro — logo reveal (0–3s)
+2. Problem — quick framing of the pain (3–8s)
+3. Solution — product demo highlight (8–16s)
+4. CTA — sign-up nudge (16–20s)
+```
+
+The plan lives in conversation history. Observational Memory will compress old turns over time; the brief in working memory keeps the high-fidelity record. There is no `scenePlan` field in working memory — the plan is a chat artifact, not state.
+
+For follow-up edits on an existing project, no new plan is written; the Planner classifies the edit per the routing table and delegates.
+
+## Pipelined Delegation
+
+For initial generation, scenes flow through a 2-stage pipeline: AD designs, Implementor builds. They run in lockstep, one step apart.
+
+```
+t1:  AD scene 1
+t2:  AD scene 2   ║   Impl scene 1
+t3:  AD scene 3   ║   Impl scene 2
+…
+tN:                ║   Impl scene N
+```
+
+**Invariants** (enforced by prompt + `onDelegationStart` guards):
+
+- At most one `agent-artDirector` call in flight at a time.
+- At most one `agent-implementor` call in flight at a time.
+- AD is at most one scene ahead of the Implementor — never two.
+- AD and Implementor never run on the same scene `n` simultaneously (Implementor needs the finalized `sceneRegistry[n].design`).
+- On Implementor error for scene `n`: pause the pipeline. Re-delegate scene `n` (Implementor for a small fix, or AD if the design is the problem). Do not advance AD to `n+2` until `n` is settled.
+
+The only legal parallel dispatch is `agent-implementor(n)` ∥ `agent-artDirector(n+1)` in the same Planner turn. Mastra runs parallel tool calls concurrently.
 
 ## Routing Rules (Live in the Planner's Prompt)
 
 | User request | Planner action |
 |---|---|
-| Exact tweak ("make the title bigger") | call `delegateToImplementor(sceneNumber)` only |
-| Creative change ("make intro feel energetic") | call `delegateToArtDirector(sceneNumber)`, then `delegateToImplementor(sceneNumber)` |
-| Major restructure ("add a pricing scene") | call `delegateToArtDirector` (full), then `delegateToImplementor` per scene |
-| Style change ("use blue instead of red") | call `delegateToArtDirector` (style only), then `delegateToImplementor` per affected scene |
-| Error fix ("fix the typecheck error in scene 2") | call `delegateToImplementor(2)` only |
+| Initial generation (fresh project) | write the plan in chat, then run the pipeline above (AD scene 1 → AD scene 2 ∥ Impl scene 1 → …) |
+| Exact tweak ("make the title bigger") | call `agent-implementor` for the affected scene only |
+| Creative change ("make intro feel energetic") | call `agent-artDirector` for the scene, then `agent-implementor` |
+| Major restructure ("add a pricing scene") | rewrite the plan in chat, then run the pipeline for the affected scenes |
+| Style change ("use blue instead of red") | call `agent-artDirector` (style only), then `agent-implementor` per affected scene, sequentially |
+| Error fix ("fix the typecheck error in scene 2") | call `agent-implementor` for scene 2 only |
 
-Rules of thumb:
-
-- direct Implementor path only for exact, unambiguous changes or known errors
-- Art Director path for feel, layout, style, pacing, or ambiguous creative direction
-- if classification is unclear, ask one clarifying question before delegating
-- the Planner may emit `delegateToImplementor` calls in **parallel** for independent scenes once their designs are finalized
+If classification is unclear, ask one focused question before delegating.
 
 ## Planner Setup
 
 ```ts
+// agents/planner.ts
 import { Agent } from '@mastra/core/agent'
-import { setBriefTool, setRoutingTool } from '../memory/access'
+import { setBriefTool } from '../memory/access'
 import { retrieveProjectKnowledge } from '../knowledge/retrieve'
-import { delegateToArtDirector, delegateToImplementor } from './delegations'
+import { artDirectorAgent } from './art-director'
+import { implementorAgent } from './implementor'
+import { bus } from '../server/bus'
 
 export const plannerAgent = new Agent({
   id: 'planner-agent',
   name: 'Planner',
   instructions: `...`,                         // see "Instructions To Write"
-  model: 'zai-coding-plan/glm-4.7-flash',
+  model: process.env.AGENT_MODEL!,             // provider/model string, configured at deploy time
+
+  // Regular tools the Planner uses directly:
   tools: {
     setBrief: setBriefTool,                    // role-bound to 'planner'
-    setRouting: setRoutingTool,                // role-bound to 'planner'
     retrieveProjectKnowledge,                  // RAG
-    delegateToArtDirector,                     // subagent dispatch
-    delegateToImplementor,                     // subagent dispatch
+  },
+
+  // Subagents — Mastra auto-creates `agent-artDirector` and `agent-implementor` tools:
+  agents: {
+    artDirector: artDirectorAgent,
+    implementor: implementorAgent,
+  },
+
+  // Hook into the delegation lifecycle for bus events, prompt shaping, and guards:
+  defaultOptions: {
+    delegation: {
+      onDelegationStart: async (ctx) => {
+        // ctx.primitiveId is the subagent id (e.g. "art-director-agent")
+        bus.emit('agent.start', {
+          agent: ctx.primitiveId,
+          input: ctx.prompt,
+        })
+        return { proceed: true }
+      },
+
+      onDelegationComplete: async (ctx) => {
+        if (ctx.error) {
+          bus.emit('agent.error', { agent: ctx.primitiveId, error: String(ctx.error) })
+          return
+        }
+        bus.emit('agent.end', {
+          agent: ctx.primitiveId,
+          output: ctx.result,
+        })
+      },
+    },
   },
 })
 ```
 
-Memory helpers are exposed as tools with the role pre-bound, so the agent literally cannot pass a different role.
+Notes:
+
+- Memory helpers are exposed as tools with the role pre-bound; the agent cannot pass a different role.
+- Auto-generated subagent tool names: `agent-<objectKey>` ([docs](https://mastra.ai/docs/agents/using-tools#agents-as-tools)). `ctx.primitiveId` is the subagent's own `id` (e.g. `'art-director-agent'`), not the tool name.
+- The hook does not parse the subagent's reply. Scene-level UI updates come from the filesystem (Phase 4 workspace read-through routes watching `SANDBOX_WORKSPACE_DIR/src/`) and from the `sceneNumber` already attached to `agent.start` / `agent.end` payloads when the Planner dispatches per-scene work.
 
 ## Instructions To Write
 
 Cover:
 
-1. **Role**: supervisor. Talk to the user, classify intent, produce the brief, and delegate.
+1. **Role**: supervisor. Talk to the user, classify intent, produce the brief, and delegate via `agent-artDirector` / `agent-implementor`.
 2. **Brief output**: project goal, audience, tone, duration, assets, key messages, user preferences. Call `setBrief` to persist.
 3. **Clarification**: do not produce a brief or delegate until missing essentials are known. Ask one focused question at a time.
-4. **Routing**: classify each follow-up using the table above and call the matching delegation tool(s). Record the classification with `setRouting` (single-field audit log).
+4. **Routing**: classify each follow-up using the table above and call the matching subagent tool(s). Routing is implicit in your delegation choices — not persisted separately.
 5. **Delegation discipline**:
-   - Always wait for `delegateToArtDirector` to finish before delegating dependent Implementor work for that scene.
-   - Independent Implementor scenes may be delegated in parallel.
-   - On Implementor error result, decide: re-delegate to Implementor (small fix), call Art Director (design issue), or surface to user.
+   - Always wait for `agent-artDirector` to finish for scene `n` before delegating Implementor work for scene `n`.
+   - Run the pipeline: at most one AD call and one Implementor call in flight, with the AD at most one scene ahead of the Implementor.
+   - Never run two Implementor calls in parallel.
+   - On Implementor error for scene `n`: pause the pipeline (do not start AD on `n+2`); decide between re-delegating to Implementor (small fix), calling Art Director (design issue), or surfacing to the user.
+   - Read each subagent's returned summary (see "Subagent Summaries") on the next turn and use it to choose the next action.
 6. **RAG vs Memory split**:
    - Planner is the main RAG consumer
    - Workspace State holds the active working state
    - RAG feeds facts into prompts; memory persists decisions
 7. **Constraints**: MVP is short product and screen-recording videos only. The Planner never writes code, never reads/writes files, never invokes sandbox tools.
+
+## Subagent `description` Fields
+
+The supervisor LLM picks which subagent to call based on each subagent's `description` field. These must be specific. Set them on the subagent definitions in `art-director.ts` / `implementor.ts`:
+
+```ts
+// art-director.ts
+export const artDirectorAgent = new Agent({
+  id: 'art-director-agent',
+  description: `Designs scenes: layout, palette, typography, pacing, motion direction.
+    Reads brief and current styleContext, writes styleContext and sceneRegistry[n].design.
+    Use when the request needs new creative direction (feel, layout, style change, new scenes).
+    Returns a Markdown reply ending in a "## Summary" block.`,
+  // ...
+})
+
+// implementor.ts
+export const implementorAgent = new Agent({
+  id: 'implementor-agent',
+  description: `Writes Remotion scene code for one scene at a time.
+    Reads finalized scene design + styleContext, runs sandbox tools (read_file, write_file, exec_command).
+    Use after the Art Director has produced a design, or for exact unambiguous code edits.
+    Returns a Markdown reply ending in a "## Summary" block. Does NOT write working memory.`,
+  // ...
+})
+```
 
 ## Brief Shape
 
@@ -108,93 +209,48 @@ Cover:
 }
 ```
 
-## Delegation Tools
+## Enforcing Invariants In `onDelegationStart`
 
-Each delegation tool is a Mastra `createTool` whose `execute` calls `mastra.getAgent(name).generate(...)` and emits `agent.start` / `agent.end` events on the bus.
+Prompt discipline catches most violations; the hook is the safety net. If the supervisor LLM emits an illegal delegation (e.g. two `agent-implementor` calls in the same turn, or AD two scenes ahead), reject it:
 
 ```ts
-// agents/delegations.ts (sketch)
-import { createTool } from '@mastra/core/tools'
-import { z } from 'zod'
-import { bus } from '../server/bus'
-
-export const delegateToArtDirector = createTool({
-  id: 'delegate_to_art_director',
-  description: 'Hand off scene-design work to the Art Director. Use when the request needs new creative direction (feel, layout, pacing, style change, or new scenes).',
-  inputSchema: z.object({
-    sceneNumber: z.number().optional(),  // omit to design all scenes
-    note: z.string().optional(),         // optional brief context for this delegation
-  }),
-  execute: async ({ context, mastra }) => {
-    bus.emit('agent.start', { agent: 'art-director', input: context })
-    const result = await mastra.getAgent('artDirectorAgent').generate({
-      messages: [{ role: 'user', content: buildArtDirectorPrompt(context) }],
-    })
-    bus.emit('agent.end', { agent: 'art-director', output: result.text })
-    return result.text
-  },
-})
-
-export const delegateToImplementor = createTool({
-  id: 'delegate_to_implementor',
-  description: 'Hand off code-writing work to the Implementor for one scene. Safe to call in parallel for independent scenes.',
-  inputSchema: z.object({
-    sceneNumber: z.number(),
-    note: z.string().optional(),
-  }),
-  execute: async ({ context, mastra }) => {
-    bus.emit('agent.start', { agent: 'implementor', sceneNumber: context.sceneNumber })
-    const result = await mastra.getAgent('implementorAgent').generate({
-      messages: [{ role: 'user', content: buildImplementorPrompt(context) }],
-    })
-    bus.emit('agent.end', { agent: 'implementor', sceneNumber: context.sceneNumber, output: result.text })
-    return result.text
-  },
-})
+onDelegationStart: async (ctx) => {
+  if (ctx.primitiveId === 'implementor-agent' && implementorInFlight) {
+    return { proceed: false, rejectionReason: 'Implementor already running for another scene.' }
+  }
+  return { proceed: true }
+}
 ```
 
-## Parallelism
+In-flight state is tracked in a small map scoped to the supervisor run. Verify the exact context field for run/thread id against `@mastra/core@1.25` types when implementing.
 
-Once the Art Director finishes designing all scenes, the Planner can dispatch Implementor work concurrently:
+## Subagent Summaries
+
+Both subagents must end every reply with a short summary block. It exists for one reader: the **Planner**, on its next iteration. The supervisor LLM uses it to decide the next pipeline step. The bus and the UI do not parse it — agent identity comes from `agent.start` / `agent.end` payloads, and scene-level state comes from the filesystem.
+
+Required shape (markdown, plain text — no JSON parsing):
 
 ```
-Planner → delegateToImplementor(scene=1)  ─┐
-       → delegateToImplementor(scene=2)  ─┼── run concurrently (AI SDK parallel tool calls)
-       → delegateToImplementor(scene=3)  ─┘
+## Summary
+- status: ok | error | needs-input
+- notes: <one line — what changed, what's still open, any error, recon facts, etc.>
 ```
 
-What is **not** parallel-safe:
+`notes` is free-form. For recon-only dispatches (e.g. "what's in this CSV?") it carries the requested facts. For build dispatches it summarizes what was produced or what failed. Specifics like file paths or working-memory fields touched can go in `notes` if useful, but they aren't required — the filesystem and working memory are the sources of truth.
 
-- Art Director must finish before any Implementor call for that scene (Implementor reads `sceneRegistry[n].design`).
-- Two Implementor calls on the same scene number (race on `sceneRegistry[n].status`).
-- Anything before the Planner has classified the request.
+The Planner's prompt should require it to read the most recent summary block from each subagent before deciding the next delegation. If a summary reports `status: error`, the pipeline pauses per the discipline rules above.
 
 ## Memory Handoff
 
-Subagents read and write Workspace State through their own role-correct helpers from `memory/access.ts`. Delegation tools do not touch memory directly — they only invoke the agent and stream events.
+Subagents read and write Workspace State through their own role-correct helpers from `memory/access.ts`. The supervisor's delegation mechanism does not touch memory directly — Mastra runs `subagent.generate(...)` under the hood; our `delegation` hooks only emit bus events.
 
-```
-Planner                        Art Director                   Implementor
-┌──────────────┐              ┌──────────────┐              ┌──────────────┐
-│ reads:       │              │ reads:       │              │ reads:       │
-│  user input  │              │  brief       │              │  scene       │
-│  RAG facts   │              │  styleContext│              │  design      │
-│              │              │              │              │  styleContext│
-│ writes:      │              │ writes:      │              │              │
-│  brief       │              │  styleContext│              │ writes:      │
-│  routing     │              │  sceneRegistry│             │  sceneRegistry│
-│              │              │  [n].design  │              │  [n].status  │
-└──────────────┘              └──────────────┘              │  [n].filePath│
-                                                            │  [n].errors  │
-                                                            └──────────────┘
-```
+| Agent | Reads | Writes |
+|---|---|---|
+| Planner | user input, RAG facts | `brief` |
+| Art Director | `brief`, `styleContext` | `styleContext`, `sceneRegistry[n].design` |
+| Implementor | `sceneRegistry[n].design`, `styleContext` | none (reports via `## Summary` + filesystem) |
 
-Handoff rules:
-
-1. **Planner owns memory initialization.** Creates the brief, sets routing classification.
-2. **Art Director reads then writes.** Reads brief and current `styleContext`, writes `styleContext` and `sceneRegistry[n].design`.
-3. **Implementor reads then writes.** Reads scene design and `styleContext`, writes `sceneRegistry[n].status`, `.filePath`, and `.errors`.
-4. **Field ownership is enforced by `memory/access.ts`.** Wrong-role writes throw. Caught at the delegation-tool boundary and re-emitted as `field-ownership-violation` events.
+Field ownership is enforced by `memory/access.ts` — wrong-role writes throw, and the helpers themselves emit `field-ownership-violation` on the bus.
 
 ## Event Bus
 
@@ -208,7 +264,6 @@ export type BusEvent =
   | { type: 'agent.start'; agent: string; sceneNumber?: number; input?: unknown }
   | { type: 'agent.end';   agent: string; sceneNumber?: number; output?: unknown }
   | { type: 'agent.error'; agent: string; error: string }
-  | { type: 'scene.update'; sceneNumber: number; status: string }
   | { type: 'field-ownership-violation'; field: string; role: string; expectedRole: string }
 
 export const bus = new EventEmitter()
@@ -216,9 +271,11 @@ export const bus = new EventEmitter()
 
 Where events come from:
 
-- Delegation tools emit `agent.start` / `agent.end`.
-- The Implementor's scene-status helpers in `memory/access.ts` emit `scene.update`.
+- `onDelegationStart` emits `agent.start` (with `sceneNumber` when the Planner dispatched per-scene work).
+- `onDelegationComplete` emits `agent.end` (or `agent.error` on failure). It does not parse the subagent reply.
 - Access-layer throws emit `field-ownership-violation`.
+
+Scene-level UI state (which scene is building, which one just got new code) is reconstructed from `agent.start` / `agent.end` payloads plus filesystem watchers under `SANDBOX_WORKSPACE_DIR/src/` — not from parsing the Summary block.
 
 ## Registration
 
@@ -238,7 +295,7 @@ export const mastra = new Mastra({
 })
 ```
 
-The Planner is wired with both delegation tools. The Art Director and Implementor are exposed as agents so `mastra.getAgent(name).generate(...)` works from the delegation tools. The `/chat/artDirectorAgent` and `/chat/implementorAgent` endpoints exist for direct testing only.
+The Planner is wired with both subagents via its `agents` property (no separate delegation tools). The Art Director and Implementor are also registered top-level so the `/chat/artDirectorAgent` and `/chat/implementorAgent` endpoints exist for direct testing.
 
 ## Checkpoints
 
@@ -257,10 +314,10 @@ curl -X POST http://localhost:4111/chat/plannerAgent -H "Content-Type: applicati
 Expected:
 
 - Planner asks a clarifying question, **or**
-- Planner produces a brief, then emits tool calls to `delegate_to_art_director` and `delegate_to_implementor` (visible in the response trace).
+- Planner produces a brief, then emits tool calls to `agent-artDirector` and `agent-implementor` (visible in the response trace as `tool-call` events with `toolName: "agent-artDirector"` / `toolName: "agent-implementor"`).
 - Art Director writes `styleContext` and scene designs.
 - Implementor writes scene code and updates statuses.
-- Bus emits matching `agent.start` / `agent.end` events.
+- Bus emits matching `agent.start` / `agent.end` events from the `delegation` hooks.
 
 **2. Tweak routing.**
 
@@ -268,15 +325,16 @@ Expected:
 curl -X POST http://localhost:4111/chat/plannerAgent -H "Content-Type: application/json" -d "{\"messages\":[{\"role\":\"user\",\"content\":\"Make the title bigger\"}]}"
 ```
 
-Expected: Planner emits only `delegate_to_implementor`. Art Director is not invoked.
+Expected: Planner emits only `agent-implementor`. Art Director is not invoked.
 
 ## Reference
 
-- [`phase-3-memory-knowledge-uploads.md`](phase-3-memory-knowledge-uploads.md) — `setBrief`, `setRouting`, role-guarded helpers, `retrieveProjectKnowledge`
-- [`phase-3-art-director-agent.md`](phase-3-art-director-agent.md) — subagent invoked via `delegateToArtDirector`
-- [`phase-3-implementor-agent.md`](phase-3-implementor-agent.md) — subagent invoked via `delegateToImplementor`
+- [`phase-3-memory-and-state.md`](phase-3-memory-and-state.md) — `setBrief` and the role-guarded helpers the Planner uses
+- [`phase-3-knowledge-and-uploads.md`](phase-3-knowledge-and-uploads.md) — `retrieveProjectKnowledge` tool the Planner consumes
+- [`phase-3-art-director-agent.md`](phase-3-art-director-agent.md) — subagent invoked via `agent-artDirector`
+- [`phase-3-implementor-agent.md`](phase-3-implementor-agent.md) — subagent invoked via `agent-implementor`
 - `docs/SETUP_GUIDE.md`
 - `docs/project-knowledge-and-skills.md`
-- Mastra agents: <https://mastra.ai/docs/agents/overview>
-- Mastra subagents (agent-as-tools): <https://mastra.ai/docs/agents/agent-as-tools>
-- AI SDK parallel tool calls: <https://ai-sdk.dev/docs/foundations/tools>
+- Mastra supervisor agents: <https://mastra.ai/docs/agents/supervisor-agents>
+- Mastra agents-as-tools: <https://mastra.ai/docs/agents/using-tools#agents-as-tools>
+- `.network()` deprecation / migration: <https://mastra.ai/guides/migrations/network-to-supervisor>

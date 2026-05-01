@@ -1,6 +1,6 @@
 # Phase 3 — Implementor Agent
 
-> **Architecture note.** Invoked as a subagent by the Planner via `delegateToImplementor`. See [`phase-3-planner-agent.md`](phase-3-planner-agent.md) for the supervisor + delegation-tool wiring.
+> **Architecture note.** Invoked as a subagent by the Planner via the auto-generated `agent-implementor` tool (Mastra supervisor pattern). See [`phase-3-planner-agent.md`](phase-3-planner-agent.md) for the supervisor + `delegation`-hook wiring.
 
 ## Your Role
 
@@ -8,19 +8,19 @@ Build the **Implementor agent**. This is the execution agent.
 
 It receives Art Director scene designs plus shared style context (read from Workspace State), then writes the actual Remotion code. It owns layout, styling, animations, transitions, and the verification loop.
 
-The Implementor is invoked through the Planner's delegation tool — it is not a top-level conversational agent. The `/chat/implementorAgent` endpoint exists for direct testing only.
+The Implementor is invoked through the auto-generated `agent-implementor` subagent tool on the Planner — it is not a top-level conversational agent. The `/chat/implementorAgent` endpoint exists for direct testing only.
 
 ## What the Implementor Does
 
 - reads scene design output from the Art Director
 - uses working memory (`styleContext`, `sceneRegistry`) as primary input
-- uses RAG only when project context affects implementation
+- does **not** write to working memory — pure consumer
 - loads relevant skill docs before editing
-- writes Remotion compositions and scene files
+- writes Remotion compositions and scene files (filesystem)
 - implements styling, motion, and transitions in one pass
 - runs `run_typecheck()` after edits
 - optionally runs `run_render_check()`
-- updates build status, file paths, and errors in shared scene records
+- reports build status, file paths, and any errors back to the Planner via the `## Summary` block in its reply (not via working memory)
 
 This agent writes real React and Remotion code.
 
@@ -38,7 +38,7 @@ export const implementorAgent = new Agent({
   id: 'implementor-agent',
   name: 'Implementor',
   instructions: `...`,
-  model: 'zai-coding-plan/glm-4.7-flash',
+  model: process.env.AGENT_MODEL!,             // provider/model string, configured at deploy time
   tools: {},
 })
 ```
@@ -67,6 +67,7 @@ Your instructions should define:
     - short product-video scope
     - no external API calls in compositions
     - no filesystem access in browser-executed compositions
+6. **Reply contract**: end every reply with a `## Summary` block in the shape defined in [`phase-3-planner-agent.md`](phase-3-planner-agent.md) under "Subagent Summaries". On error, set `status: error` and put the error message in `notes` so the Planner can decide whether to retry or escalate.
 
 Implementation rules:
 
@@ -108,6 +109,8 @@ Tool hierarchy:
 
 This is the only role that should use sandbox tools.
 
+The Implementor agent is configured with `workingMemory.readOnly: true` and is **not** given any of the role-guarded memory-write tools from `memory/access.ts`. Its tool surface is exclusively the sandbox MCP tools above.
+
 ## Checkpoint
 
 Run:
@@ -128,5 +131,5 @@ Until tools are wired in, a descriptive response is acceptable.
 
 - [`docs/local-sandbox-service-design.md`](../docs/local-sandbox-service-design.md) — sandbox service architecture, MCP tool surface, local provider
 - [`phase-3-sandbox-service.md`](phase-3-sandbox-service.md) — concrete steps to build the sandbox service
-- [`phase-3-planner-agent.md`](phase-3-planner-agent.md) — supervisor + delegation tools (how the Planner invokes this agent)
+- [`phase-3-planner-agent.md`](phase-3-planner-agent.md) — supervisor wiring + `delegation` hooks (how the Planner invokes this agent)
 - `docs/SETUP_GUIDE.md`

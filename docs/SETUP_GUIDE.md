@@ -1,4 +1,4 @@
-# Editing Agent — Setup Guide
+# Motion Graphics Agent — Setup Guide
 
 Overview of phases and what to set up. See docs for detailed syntax — this guide shows the architecture and checkpoints.
 
@@ -8,7 +8,7 @@ Overview of phases and what to set up. See docs for detailed syntax — this gui
 
 - **Bun**: [bun.sh](https://bun.sh) — used as the package manager throughout this guide.
 - **Node.js 22.13+** — required by Mastra.
-- **LLM API key**: This guide uses [Z.AI (Zhipu/GLM)](https://open.bigmodel.cn) with Mastra's built-in `zai-coding-plan` provider. Swap for any [AI SDK provider](https://sdk.vercel.ai) (OpenAI, Anthropic, Google, etc.) if preferred.
+- **LLM API key**: Any [AI SDK provider](https://sdk.vercel.ai) (OpenAI, Anthropic, Google, etc.) reachable through Mastra's [model router](https://mastra.ai/models). Concrete provider/model is chosen at deploy time via env vars; this guide stays provider-agnostic.
 
 No Docker required. The sandbox runs as a local Bun process — see [`local-sandbox-service-design.md`](local-sandbox-service-design.md).
 
@@ -17,7 +17,7 @@ No Docker required. The sandbox runs as a local Bun process — see [`local-sand
 ## Target Structure
 
 ```
-editing-agent/
+motion-graphics-agent/
 ├── web/                        ← Vite + React (port 3000)
 │   ├── src/routes/
 │   ├── preview/                ← host-side .tsx copies
@@ -60,7 +60,7 @@ editing-agent/
 
     ```json
     {
-        "name": "editing-agent",
+        "name": "motion-graphics-agent",
         "private": true,
         "workspaces": ["web", "mastra", "sandbox"],
         "scripts": {
@@ -92,7 +92,7 @@ editing-agent/
     bunx create-mastra@latest mastra --no-example --llm openai
     ```
 
-    This creates `mastra/` with `src/mastra/` structure, deps, and scripts. No example code, no interactive prompts. Uses OpenAI as the CLI default (ignored — we use the built-in `zai-coding-plan` provider instead).
+    This creates `mastra/` with `src/mastra/` structure, deps, and scripts. No example code, no interactive prompts. The `--llm` flag only affects scaffold defaults — the actual provider is set per-agent via `provider/model` strings at runtime.
 
     After creation, install the Mastra AI SDK adapter (needed for `chatRoute()`):
 
@@ -112,11 +112,19 @@ editing-agent/
 7. Create `.env` at root:
 
     ```
-    ZHIPU_API_KEY=<your-z.ai-key>
+    # whichever provider's key your AGENT_MODEL points at — see https://mastra.ai/models
+    # e.g. OPENAI_API_KEY=..., ANTHROPIC_API_KEY=..., GOOGLE_GENERATIVE_AI_API_KEY=...
+    AGENT_MODEL=<provider/model string, e.g. openai/gpt-5-mini>
     SANDBOX_MCP_URL=http://localhost:4311/mcp
+    SANDBOX_WORKSPACE_DIR=./sandbox/.workspace
+    LIBSQL_URL=file:./mastra/data/motion-graphics-agent.db
+    # Embeddings (T1B) — any OpenAI-compatible endpoint
+    EMBEDDING_BASE_URL=
+    EMBEDDING_API_KEY=
+    EMBEDDING_MODEL=
     ```
 
-    Mastra's built-in `zai-coding-plan` provider reads `ZHIPU_API_KEY` automatically. No provider package needed.
+    Mastra's model router auto-detects provider keys by env-var name (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, etc.). No extra provider package needed for routed providers.
 
 8. Run `bun install` from root to link workspaces.
 
@@ -129,7 +137,6 @@ editing-agent/
 The Vite React scaffold in Phase 1 created the frontend. Remaining work:
 
 1. Build the full-screen layout around four panels:
-
     - chat
     - Remotion preview
     - agent activity
@@ -142,7 +149,6 @@ The Vite React scaffold in Phase 1 created the frontend. Remaining work:
     ```
 
 3. Reflect the current pipeline in the UI:
-
     - Planner intake and routing
     - Art Director design phase
     - Implementor execution phase
@@ -166,17 +172,17 @@ The Mastra CLI in Phase 1 created the `mastra/` workspace. Now build the agent s
 | Order | Task | File | What to build |
 |-------|------|------|---------------|
 | 1 | Memory, Knowledge, Uploads | `tasks/phase-3-memory-knowledge-uploads.md` | Workspace State + LibSQL persistence + conversation summarization + Knowledge Store + upload pipeline |
-| 2 | Planner Agent (Supervisor) + Delegation Tools | `tasks/phase-3-planner-agent.md` | Supervisor agent + `delegateToArtDirector`/`delegateToImplementor` tool wrappers + in-process event bus |
+| 2 | Planner Agent (Supervisor) | `tasks/phase-3-planner-agent.md` | Mastra supervisor agent (auto-generated `agent-artDirector`/`agent-implementor` tools) + `delegation` hooks + in-process event bus |
 | 3 | Art Director Agent | `tasks/phase-3-art-director-agent.md` | Subagent. Scene design, styleContext, sceneRegistry design data |
 | 4 | Implementor Agent | `tasks/phase-3-implementor-agent.md` | Subagent. Remotion code execution, sandbox tools, typecheck loop |
 | 5 | Sandbox Service | `tasks/phase-3-sandbox-service.md` | Local Bun MCP service exposing file + exec tools |
 | 6 | MCP Client + Skills | `tasks/phase-3-mcp-client-and-skills.md` | Wire main app to sandbox; ship v1 skill docs |
 
-> **Architecture note.** The Planner is the supervisor — it dispatches the Art Director and Implementor directly via subagent tools. There is no separate orchestrator. Routing rules live in the Planner's system prompt.
+> **Architecture note.** The Planner is a Mastra supervisor agent — it lists the Art Director and Implementor under `agents: { ... }` and Mastra auto-generates `agent-artDirector` / `agent-implementor` tools to dispatch them. There is no separate orchestrator and no hand-rolled wrapper tools. Routing rules live in the Planner's system prompt; bus emission and invariant guards live in `delegation` hooks.
 
 ### Execution order
 
-T1 (memory) first — it's the data spine. T3 and T4 (the two subagents) can be built in parallel after T1. T2 (Planner + delegation tools) wires last because it dispatches into T3 and T4 as subagents. T5 (sandbox) is independent and can run alongside everything. T6 (MCP client) needs T5 reachable and attaches sandbox tools to the Implementor.
+T1 (memory) first — it's the data spine. T3 and T4 (the two subagents) can be built in parallel after T1. T2 (Planner supervisor + `delegation` hooks) wires last because it lists T3 and T4 under its `agents: { ... }` property. T5 (sandbox) is independent and can run alongside everything. T6 (MCP client) needs T5 reachable and attaches sandbox tools to the Implementor.
 
 Within a running pipeline:
 
@@ -186,16 +192,16 @@ User -> Planner -> Art Director -> Implementor -> Preview
 
 For incremental edits the Planner delegates only what's needed:
 
-- exact tweak -> `delegateToImplementor` only
-- creative change -> `delegateToArtDirector` then `delegateToImplementor`
-- major restructure -> full pipeline (all delegation tools)
+- exact tweak -> `agent-implementor` only
+- creative change -> `agent-artDirector` then `agent-implementor`
+- major restructure -> full pipeline (both subagents per scene, AD then Implementor)
 
 ### Key structures
 
 - `styleContext` — current visual language, owned by Art Director
 - `sceneRegistry` — per-scene design, status, file paths, errors; design owned by Art Director, status/errors owned by Implementor
 
-See [`phase-3-planner-agent.md`](../tasks/phase-3-planner-agent.md) for the supervisor agent, delegation-tool wiring, and event-bus details.
+See [`phase-3-planner-agent.md`](../tasks/phase-3-planner-agent.md) for the supervisor wiring, `delegation` hooks, and event-bus details.
 
 **Checkpoint:**
 
@@ -241,13 +247,13 @@ This launches sandbox, mastra, and web in parallel.
 
 ## What Each Checkpoint Proves
 
-| Phase | Checkpoint | What it proves |
-|---|---|---|
-| 1 | `bun install` | Workspace is valid |
-| 2 | Frontend on `:3000` | UI builds and renders |
-| 3 | Mastra on `:4111`, sandbox on `:4311`, agents respond, MCP client discovers tools | Backend layers are wired |
-| 4 | Activity events stream, file tree + preview live-update | Frontend integration works |
-| 5 | Prompt flows through system end-to-end | Full loop works |
+| Phase | Checkpoint                                                                        | What it proves             |
+| ----- | --------------------------------------------------------------------------------- | -------------------------- |
+| 1     | `bun install`                                                                     | Workspace is valid         |
+| 2     | Frontend on `:3000`                                                               | UI builds and renders      |
+| 3     | Mastra on `:4111`, sandbox on `:4311`, agents respond, MCP client discovers tools | Backend layers are wired   |
+| 4     | Activity events stream, file tree + preview live-update                           | Frontend integration works |
+| 5     | Prompt flows through system end-to-end                                            | Full loop works            |
 
 ---
 
@@ -265,7 +271,7 @@ After this scaffold:
 
 ## Related Docs
 
-- [`editing agent.md`](editing%20agent.md)
+- [`architecture.md`](architecture.md)
 - [`project-knowledge-and-skills.md`](project-knowledge-and-skills.md)
 - [`local-sandbox-service-design.md`](local-sandbox-service-design.md)
 - [`reference/docker-sandbox-historical.md`](reference/docker-sandbox-historical.md) — rejected container-based approach (context only)

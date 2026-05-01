@@ -1,6 +1,8 @@
 # Docker Crash Course (Refresher)
 
-A fast pass over the Docker concepts you need before building the sandbox. Skip anything you already know — the practice exercise at the bottom uses all of it.
+> **Historical reference only.** This project does not use Docker — the active sandbox runs as a local Bun process exposed over MCP/HTTP. See `docs/local-sandbox-service-design.md` for the live design. Kept here as a generic Docker primer; the "Mini Sandbox" exercise below describes the rejected container-based approach.
+
+A fast pass over Docker concepts. Skip anything you already know.
 
 ---
 
@@ -293,4 +295,4 @@ When this exercise feels easy:
 2. Add the rest of the tool families: write, skills, verify
 3. Connect Mastra to the discovered MCP tools
 
-See `docs/Building a Local Docker Sandbox for Agentic Apps.md` for the full sandbox design.
+See `docs/reference/docker-sandbox-historical.md` for the original (now-rejected) Docker sandbox design, and `docs/local-sandbox-service-design.md` for the active replacement.

@@ -1,5 +1,15 @@
 # Mastra Reference
 
+> **Historical reference only — do not implement against this.**
+>
+> This document describes an earlier iteration of the project and contains content that contradicts the active architecture:
+>
+> - Lists the agents as **Planner / Editor / Motion**. The current split is **Planner / Art Director / Implementor**.
+> - Treats a Docker-based sandbox as the live design. The active sandbox is a local Bun process — see `docs/local-sandbox-service-design.md`.
+> - The `chatRoute({ path: '/chat/:agentId' })` registration pattern predates the current supervisor model. The Planner is now a Mastra supervisor agent that lists the other agents under `agents: { ... }`; Mastra auto-generates `agent-artDirector` / `agent-implementor` tools and runs delegations under the hood. Bus emission and invariant guards live in `delegation` hooks. See `tasks/phase-3-planner-agent.md` for the current wiring.
+>
+> For the current architecture see `PROJECT_OVERVIEW.md`, `docs/architecture.md`, and `AGENTS.md` → Architecture Constraints. Kept here for the Mastra-specific API notes (memory, RAG, LibSQL) which are mostly still accurate.
+
 Architecture, memory, RAG, and integration patterns for the editing-agent project. Based on actual Mastra docs fetched from mastra.ai.
 
 ---
@@ -739,8 +749,9 @@ cd mastra && bun run start   # Start production server
 - LibSQL vector store: https://mastra.ai/reference/vectors/libsql
 - LibSQL storage: https://mastra.ai/reference/storage/libsql
 - AI SDK + Mastra blog: https://mastra.ai/blog/using-ai-sdk-with-mastra
-- Project architecture: `docs/editing agent.md`
-- Docker sandbox: `docs/Building a Local Docker Sandbox for Agentic Apps.md`
+- Project architecture: `docs/architecture.md`
+- Sandbox design (active): `docs/local-sandbox-service-design.md`
+- Sandbox design (historical Docker approach): `docs/reference/docker-sandbox-historical.md`
 - Detailed learnings: `docs/reference/mastra-learnings.md`
 - Editor overview: https://mastra.ai/docs/editor/overview
 - Editor prompts: https://mastra.ai/docs/editor/prompts

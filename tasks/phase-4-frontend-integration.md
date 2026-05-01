@@ -44,15 +44,14 @@ web/src/
 
 ```ts
 type ActivityEvent =
-  | { type: 'agent.start';    agent: AgentId; phase: string; ts: number }
+  | { type: 'agent.start';    agent: AgentId; sceneNumber?: number; ts: number }
   | { type: 'agent.message';  agent: AgentId; text: string; ts: number }
   | { type: 'agent.tool';     agent: AgentId; tool: string; ts: number }
-  | { type: 'agent.end';      agent: AgentId; phase: string; ts: number }
-  | { type: 'scene.update';   sceneId: number; status: SceneStatus; ts: number }
+  | { type: 'agent.end';      agent: AgentId; sceneNumber?: number; ts: number }
+  | { type: 'agent.error';    agent: AgentId; error: string; ts: number }
   | { type: 'workspace.file'; path: string; change: 'add' | 'change' | 'unlink'; ts: number }
   | { type: 'upload.status';  assetId: string; status: IngestStatus; ts: number }
   | { type: 'service.health'; service: 'mastra' | 'sandbox'; ok: boolean; ts: number }
-  | { type: 'error';          level: 'warn' | 'error'; message: string; agent?: AgentId; ts: number }
 
 type AgentId = 'planner' | 'art-director' | 'implementor'
 ```
@@ -61,10 +60,10 @@ type AgentId = 'planner' | 'art-director' | 'implementor'
 
 - In-process event bus (`EventEmitter` is fine for MVP).
 - SSE route: `GET /events/:projectId` — opens a long-lived response, writes `data: {json}\n\n` per event, sends a heartbeat comment every 15 s.
-- Orchestration emits `agent.*` events at start/end/tool boundaries.
-- Implementor emits `scene.update` when it writes to the scene registry.
+- The Planner's `delegation` hooks emit `agent.start` / `agent.end` / `agent.error` (with `sceneNumber` when the dispatch was per-scene).
 - Upload pipeline emits `upload.status` events.
-- Watcher emits `workspace.file` events.
+- Watcher emits `workspace.file` events under `SANDBOX_WORKSPACE_DIR/src/`.
+- The frontend reconstructs per-scene status from the `agent.start` / `agent.end` payloads (which carry `sceneNumber`) plus filesystem signals — there is no dedicated `scene.update` event.
 - Health pings emit `service.health` for `mastra` and `sandbox` (the sandbox health is observed by the MCP client; success = `ok: true`).
 
 ### Client Side
@@ -110,9 +109,9 @@ If the workspace is empty (first session, before Implementor has written anythin
 
 - Drag-and-drop zone integrated into the chat panel (drop anywhere over the chat area).
 - Also: an explicit "+ Upload" button next to the chat input.
-- Submits multipart `POST /uploads` to the route built in `phase-3-memory-knowledge-uploads.md`.
-- Per-upload row in chat thread shows ingest status pulled from `upload.status` events: `pending` → `summarizing` → `done` / `errored`.
-- On `done`, show a one-line summary (asset name + kind, or "PDF summary added") so the user has feedback the system understood the file.
+- Submits multipart `POST /uploads` to the route built in `phase-3-knowledge-and-uploads.md`.
+- Per-upload row in chat thread shows ingest status pulled from `upload.status` events: `pending` → `done` / `errored`. PDFs may take longer (chunk + embed); the row stays `pending` until the handler emits `done`.
+- On `done`, show a one-line confirmation (file name + how it was handled — "added as asset", "indexed for retrieval", "saved to uploads") so the user has feedback the system understood the file.
 
 Accept: PDF, MD, TXT, CSV, PNG, JPG, SVG, TTF, OTF, WOFF, WOFF2. Reject anything else with a clear message.
 
@@ -190,7 +189,8 @@ Then in the browser at `http://localhost:3000`:
 ## Reference
 
 - [`phase-2-frontend.md`](phase-2-frontend.md) — the shell this builds on
-- [`phase-3-planner-agent.md`](phase-3-planner-agent.md) — supervisor + delegation tools + event bus that emit `agent.*` and `scene.update` events
-- [`phase-3-memory-knowledge-uploads.md`](phase-3-memory-knowledge-uploads.md) — upload route + asset folder layout
+- [`phase-3-planner-agent.md`](phase-3-planner-agent.md) — supervisor + delegation hooks + event bus that emit `agent.*` events
+- [`phase-3-memory-and-state.md`](phase-3-memory-and-state.md) — working memory + role-guarded helpers
+- [`phase-3-knowledge-and-uploads.md`](phase-3-knowledge-and-uploads.md) — upload route + asset folder layout
 - [`phase-3-mcp-client-and-skills.md`](phase-3-mcp-client-and-skills.md) — MCP client whose health drives the sandbox connection badge
 - [`phase-3-sandbox-service.md`](phase-3-sandbox-service.md) — workspace path the watcher and read-through routes target

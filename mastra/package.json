@@ -20,10 +20,13 @@
     "start": "mastra start"
   },
   "dependencies": {
+    "@ai-sdk/azure": "^3.0.59",
+    "@ai-sdk/openai": "^3.0.58",
     "@mastra/ai-sdk": "^1.4.0",
     "@mastra/core": "^1.25.0",
     "@mastra/libsql": "^1.8.1",
     "@mastra/memory": "^1.15.1",
+    "ai": "^6.0.174",
     "zod": "4"
   }
 }

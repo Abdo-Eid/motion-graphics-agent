@@ -1,5 +1,7 @@
 # Bun Workspaces Notes
 
+> **Historical note.** Tree below predates the `sandbox/` workspace; the current monorepo has three workspaces (`web`, `mastra`, `sandbox`). Behaviour described still applies.
+
 ## How Bun Handles `node_modules` in Workspaces
 
 Unlike npm/yarn workspaces which hoist all dependencies to the root `node_modules`, **Bun installs dependencies into each workspace's own `node_modules`** by default.

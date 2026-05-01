@@ -1,12 +1,12 @@
-# Editing Agent
+# Motion Graphics Agent
 
 A multi-agent system for turning user prompts into editable Remotion code with a live preview.
 
 The architecture is a supervisor + two subagents:
 
 ```text
-Planner (supervisor) ──▶ delegateToArtDirector ──▶ Art Director
-                    └──▶ delegateToImplementor ──▶ Implementor
+Planner (supervisor) ──▶ agent-artDirector ──▶ Art Director
+                    └──▶ agent-implementor ──▶ Implementor
 ```
 
 - **Planner** owns the user conversation, classifies intent, produces the brief, **and dispatches** the other agents through subagent tools.
@@ -19,8 +19,8 @@ There is no separate orchestration layer — the routing rules live in the Plann
 
 1. The user describes a video goal.
 2. The **Planner** asks clarifying questions if needed, produces a structured brief, and decides how to delegate.
-3. For creative or structural work the Planner calls `delegateToArtDirector`, which produces scene designs and updates shared style context.
-4. The Planner then calls `delegateToImplementor` (per scene, optionally in parallel). The Implementor reads scene designs, writes Remotion code in the sandbox, runs typecheck, and fixes errors.
+3. For creative or structural work the Planner calls `agent-artDirector`, which produces scene designs and updates shared style context.
+4. The Planner then calls `agent-implementor` (per scene, optionally in parallel via Mastra's parallel tool calls). The Implementor reads scene designs, writes Remotion code in the sandbox, runs typecheck, and fixes errors.
 5. The frontend syncs the generated files for a live Remotion preview.
 
 For small follow-up edits, the Planner skips the Art Director and calls the Implementor directly.
@@ -51,20 +51,12 @@ Vite + React (:3000)            Mastra Server (:4111)
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Frontend | Vite, React, Tailwind CSS v4 |
-| Video Preview | Remotion, `@remotion/player` |
-| Chat | `@ai-sdk/react` streaming from Mastra |
-| Agent Framework | Mastra (`@mastra/core`, `@mastra/ai-sdk`) |
-| Memory | `@mastra/memory`, `@mastra/libsql` |
-| Sandbox | Local Bun process with MCP server (HTTP) |
-| Package Manager | Bun workspaces |
+Vite + React frontend, Mastra agent server, local Bun sandbox over MCP/HTTP, LibSQL persistence, Remotion preview. For the canonical tech stack table with doc links, see [`AGENTS.md`](AGENTS.md#tech-stack-quick-reference).
 
 ## Project Structure
 
 ```text
-editing-agent/
+motion-graphics-agent/
 |- web/                        Vite + React frontend
 |  |- src/routes/              App routes
 |  |- src/components/          UI components
@@ -82,12 +74,13 @@ editing-agent/
 |  |- .workspace/              gitignored, generated project files
 |  `- skills/                  markdown skill docs
 |- docs/
-|  |- reference/
-|  |  `- multi-agent-architecture.md
+|  |- architecture.md
 |  |- SETUP_GUIDE.md
-|  |- editing agent.md
+|  |- local-sandbox-service-design.md
 |  |- project-knowledge-and-skills.md
-|  `- reference/
+|  |- upload-walkthroughs.md
+|  |- learning/
+|  `- reference/                Historical / external reference material
 `- tasks/
    |- phase-2-frontend.md
    |- phase-3-planner-agent.md
@@ -101,7 +94,7 @@ editing-agent/
 
 - [Bun](https://bun.sh)
 - Node.js 22.13+ (Mastra requirement)
-- Z.AI API key for Mastra (`ZHIPU_API_KEY`)
+- An API key for an [AI SDK provider](https://sdk.vercel.ai) reachable via Mastra's [model router](https://mastra.ai/models)
 
 No Docker required.
 
@@ -110,7 +103,9 @@ No Docker required.
 Create `.env` at the repo root:
 
 ```env
-ZHIPU_API_KEY=<your-key>
+# whichever provider's key matches your AGENT_MODEL (auto-detected by Mastra's model router)
+# e.g. OPENAI_API_KEY=..., ANTHROPIC_API_KEY=..., GOOGLE_GENERATIVE_AI_API_KEY=...
+AGENT_MODEL=<provider/model string>
 SANDBOX_MCP_URL=http://localhost:4311/mcp
 ```
 
@@ -131,15 +126,16 @@ bun run dev:sandbox  # http://localhost:4311
 
 ## Documentation
 
-| Document | Description |
-|---|---|
-| [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md) | Product vision, architecture, agent responsibilities |
-| [`AGENTS.md`](AGENTS.md) | Rules for AI coding agents working in this repo |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Task board, dependency graph, suggested allocation |
-| [`docs/SETUP_GUIDE.md`](docs/SETUP_GUIDE.md) | Phase-by-phase setup and implementation checkpoints |
-| [`docs/editing agent.md`](docs/editing%20agent.md) | Architecture details, routing rules, memory structures |
-| [`docs/project-knowledge-and-skills.md`](docs/project-knowledge-and-skills.md) | Project knowledge routing, retrieval, uploads, and staged skill loading |
-| [`docs/local-sandbox-service-design.md`](docs/local-sandbox-service-design.md) | Local Bun sandbox + MCP design (no Docker) |
+| Document                                                                       | Description                                                                               |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md)                                   | Product vision, architecture, agent responsibilities                                      |
+| [`AGENTS.md`](AGENTS.md)                                                       | Rules for AI coding agents working in this repo                                           |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md)                                           | Task board, dependency graph, suggested allocation                                        |
+| [`docs/SETUP_GUIDE.md`](docs/SETUP_GUIDE.md)                                   | Phase-by-phase setup and implementation checkpoints                                       |
+| [`docs/architecture.md`](docs/architecture.md)                                 | Architecture details, routing rules, memory structures                                    |
+| [`docs/project-knowledge-and-skills.md`](docs/project-knowledge-and-skills.md) | State-layer principles, retrieval rules, agent responsibilities, and staged skill loading |
+| [`docs/upload-walkthroughs.md`](docs/upload-walkthroughs.md)                   | End-to-end ingest traces per file type (PDF, CSV, image, font)                            |
+| [`docs/local-sandbox-service-design.md`](docs/local-sandbox-service-design.md) | Local Bun sandbox + MCP design (no Docker)                                                |
 
 ## Status
 

@@ -362,9 +362,9 @@ Restart Claude Desktop. Ask: *"What files are in my workspace? Read hello.txt fo
 
 This is the same shape as the real sandbox MCP server. The differences for the sandbox version:
 
-1. Switch transport from stdio → HTTP
+1. Switch transport from stdio → HTTP (the sandbox runs as a local Bun network service, not stdio-launched)
 2. Add the rest of the tools (`edit_file`, `create_file`, `grep`, skills, verify)
-3. Run inside a Docker container
+3. Run as a separate Bun process on the host — no container
 
 ---
 
@@ -373,8 +373,7 @@ This is the same shape as the real sandbox MCP server. The differences for the s
 When this exercise feels easy:
 
 1. **Convert your stdio server to HTTP transport** so it can run as a network service
-2. **Wrap it in Docker** (you already know how — combine this with the Docker crash course)
-3. **Add file-write tools** (`edit_file`, `create_file`) with proper sandboxing
-4. **Connect from Mastra** instead of Claude Desktop
+2. **Add file-write tools** (`edit_file`, `create_file`) with path-guarded sandboxing
+3. **Connect from Mastra** instead of Claude Desktop
 
-See `docs/Building a Local Docker Sandbox for Agentic Apps.md` for the full sandbox design and the exact tool list you need to implement.
+See `docs/local-sandbox-service-design.md` for the full sandbox design and the canonical MCP tool list. The repo does not use Docker for the sandbox; `docs/reference/docker-sandbox-historical.md` documents the rejected container-based approach.

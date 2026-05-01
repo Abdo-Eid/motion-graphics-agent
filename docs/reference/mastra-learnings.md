@@ -1,5 +1,7 @@
 # Mastra Learnings
 
+> **Historical reference (April 2026).** Framework-level notes from reading Mastra's docs. Mostly still accurate at the API level, but a few examples (notably the "Key Takeaways" section) reference the rejected Docker sandbox. The active sandbox design is `docs/local-sandbox-service-design.md`.
+
 Detailed notes from reading Mastra's actual documentation pages. This is for learning — not project-specific. For the project reference, see `mastra-reference.md`.
 
 ---

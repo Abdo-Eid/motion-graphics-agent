@@ -115,6 +115,6 @@ Use TanStack AI server routes that import Mastra agents directly, bypassing `cha
 - `@ag-ui/mastra` decouples from CopilotKit and becomes a standalone bridge
 - TanStack AI hits v1 with stable API
 
-The existing note in `editing agent.md` is still correct:
+The existing note in `architecture.md` is still correct:
 
 > *"Why not TanStack AI yet? TanStack AI is currently in alpha. Same type-safety-first philosophy as the rest of the ecosystem, but too early for a POC. Revisit when it hits v1."*

@@ -1,8 +1,8 @@
-# Editing Agent Project Overview
+# Motion Graphics Agent Project Overview
 
 ## Executive Summary
 
-Editing Agent is a web app that turns a text prompt into a video project you can edit.
+Motion Graphics Agent is a web app that turns a text prompt into a video project you can edit.
 
 You describe the video you want. The system plans the story, designs the scenes, writes the code, checks that it works, and shows you a live preview.
 
@@ -25,7 +25,7 @@ For users, it feels like a chat-based video editor. For builders, it is a clear 
 
 ## Product Vision
 
-Making a product video normally requires writing, design, animation, and frontend skills. Editing Agent brings all of that into one guided workflow.
+Making a product video normally requires writing, design, animation, and frontend skills. Motion Graphics Agent brings all of that into one guided workflow.
 
 The goal is not just to generate a video once. It is to support an ongoing creative process. The user can say things like:
 
@@ -39,7 +39,7 @@ The system tracks the current project state and sends each request to the right 
 
 ## What The Product Does
 
-Editing Agent helps users create animated videos from text prompts and uploaded files.
+Motion Graphics Agent helps users create animated videos from text prompts and uploaded files.
 
 It supports:
 
@@ -57,7 +57,7 @@ The MVP focuses on short product videos and screen recordings. It does not try t
 
 ## Product Users
 
-Editing Agent is built for people who need to create product videos but do not want to learn animation code or Remotion.
+Motion Graphics Agent is built for people who need to create product videos but do not want to learn animation code or Remotion.
 
 Users should be able to describe the video, upload brand materials, review the preview, and ask for changes — all in plain language. They do not need to know how the system works under the hood.
 
@@ -72,7 +72,7 @@ Typical users:
 
 The product is aimed at non-technical users, but developers and architects are also an important audience — they will build, maintain, and extend the system.
 
-The key point for technical readers: Editing Agent is not a black box. It produces editable source code, keeps planning and design separate from implementation, runs generated code inside a sandbox, and tracks project state explicitly.
+The key point for technical readers: Motion Graphics Agent is not a black box. It produces editable source code, keeps planning and design separate from implementation, runs generated code inside a sandbox, and tracks project state explicitly.
 
 Use this document to understand:
 
@@ -83,7 +83,7 @@ Use this document to understand:
 
 ## Architecture Overview
 
-Editing Agent is organized as a monorepo with three major runtime areas:
+Motion Graphics Agent is organized as a monorepo with three major runtime areas:
 
 - Frontend web application.
 - Backend agent server.
@@ -198,7 +198,7 @@ The Planner is the entry point for every user request **and the supervisor that 
 - Creates a structured brief: goal, audience, tone, length, assets, and key messages.
 - Initializes the project's Workspace State.
 - Classifies follow-up requests.
-- **Delegates** to the Art Director and Implementor by calling subagent tools (`delegateToArtDirector`, `delegateToImplementor`).
+- **Delegates** to the Art Director and Implementor by calling Mastra's auto-generated subagent tools (`agent-artDirector`, `agent-implementor`), created from the Planner's `agents: { ... }` list.
 
 The Planner does not write code and does not use sandbox tools, but it does control the flow. There is no separate orchestration module — the routing rules live in the Planner's system prompt. This is deliberate: a creative video tool is a chat, and the same agent that hears the user is the one best placed to decide what runs next. The trade-off is less determinism (the LLM could hallucinate a delegation), mitigated by prompt discipline. Field ownership is still enforced by the role-guarded helpers in `mastra/src/mastra/memory/access.ts`.
 
@@ -229,62 +229,49 @@ It is the only agent with file-editing and verification tools. It follows the Ar
 
 ### Delegation
 
-There is no separate orchestration layer. The Planner dispatches the other agents directly via two subagent tools:
+There is no separate orchestration layer. The Planner is a Mastra **supervisor agent** — it lists the Art Director and Implementor under its `agents: { ... }` property, and Mastra auto-generates one tool per subagent:
 
-- `delegateToArtDirector` — invokes the Art Director for scene design work.
-- `delegateToImplementor` — invokes the Implementor for one scene's code.
+- `agent-artDirector` — generated from the `agents.artDirector` entry. The Planner calls it to invoke the Art Director for scene design work.
+- `agent-implementor` — generated from the `agents.implementor` entry. The Planner calls it to invoke the Implementor for one scene's code (or a recon dispatch when the Planner needs facts from an opaque upload).
 
-Each tool wraps a `mastra.getAgent(...).generate(...)` call, builds the right prompt from current Workspace State, and emits `agent.start` / `agent.end` events on an in-process bus that the frontend's activity stream consumes.
+When the supervisor LLM calls one of these tools, Mastra runs `subagent.generate(...)` under the hood. Bus emission (`agent.start` / `agent.end`) and invariant enforcement (e.g. rejecting two concurrent Implementor calls) live in the Planner's `delegation` hooks — `onDelegationStart` / `onDelegationComplete` — not in any hand-rolled wrapper code. The frontend's activity stream consumes those bus events.
 
-The Planner can call these tools in **parallel** for independent scenes once their designs are finalized — the AI SDK supports parallel tool calls. Field ownership is still enforced: the role-guarded helpers in `mastra/src/mastra/memory/access.ts` reject any wrong-role write, regardless of who calls them.
+The Planner can call these tools in **parallel** for the lockstep pipeline (Implementor on scene `n` ∥ Art Director on scene `n+1`) — Mastra dispatches parallel tool calls concurrently. Field ownership is still enforced: the role-guarded helpers in `mastra/src/mastra/memory/access.ts` reject any wrong-role write, regardless of who calls them.
 
-See [`tasks/phase-3-planner-agent.md`](tasks/phase-3-planner-agent.md) for the supervisor + delegation-tool spec.
+See [`tasks/phase-3-planner-agent.md`](tasks/phase-3-planner-agent.md) for the supervisor wiring, `delegation` hooks, and pipeline invariants.
 
 ### Project State Layers
 
-Editing Agent organizes project state into three layers, all scoped to a single project session. There is **no cross-session or user-level memory** in the MVP — each project starts fresh.
+Motion Graphics Agent organizes project state into three layers, all scoped to a single project session. There is **no cross-session or user-level memory** in the MVP — each project starts fresh.
 
 The three layers are:
 
-1. **Conversation Context** — the chat thread for this session, with rolling summarization when it gets long.
-2. **Workspace State** — the structured, mutable state of the project that agents read and write.
-3. **Project Knowledge Store** — uploaded files and large documents, queried via tools only when needed.
+1. **Conversation Context** — chat thread + Mastra Observational Memory (auto-compresses old turns).
+2. **Workspace State** — Mastra working memory (zod schema, thread-scoped). The structured, mutable state agents read and write through role-guarded helpers.
+3. **Project Knowledge Store** — `LibSQLVector` index for large unstructured docs, partitioned by `projectId`. Queried via tool only when needed.
 
 #### Conversation Context
 
-The current chat thread: user messages, agent responses, recent tool results. When the thread gets long, older turns are summarized so the model still sees the relevant history without overflowing.
+The current chat thread: user messages, agent responses, recent tool results. Mastra's Observational Memory automatically compresses older turns into a rolling summary so the model still sees relevant history without overflowing the context window.
+
+The whole-video plan also lives here, not in Workspace State — the Planner writes it as a normal chat message after the brief is set.
 
 #### Workspace State
 
-Holds the live state of the project. Agents read and write these fields directly. Key structures:
+Holds the live state of the project as Mastra **working memory** (zod schema, thread-scoped). Agents read and write these fields through role-guarded helpers. Four fields:
 
-- **Brief** — the structured understanding of what the user wants.
-- **Style context** — the visual language: colors, fonts, mood, animation feel, transitions.
-- **Scene registry** — each scene's design, build status, file path, and any errors.
-- **Routing decision** — the Planner's classification of the latest request.
-- **Assets** — typed list of uploaded assets (logos, images) with metadata and file paths.
-- **Data summaries** — derived facts from CSV execution (small structured results, not raw rows).
-- **Document summaries** — short summaries of large uploaded documents, with a pointer into the Knowledge Store.
+- **`brief`** — structured understanding of what the user wants. Owned by the Planner.
+- **`styleContext`** — the visual language: colors, fonts, mood, animation feel, transitions. Owned by the Art Director.
+- **`sceneRegistry[n].design`** — per-scene creative direction. Owned by the Art Director. Schema deliberately holds only `{ number, name, design }` — no status, no file paths, no errors.
+- **`assets[]`** — uploaded image and font assets as `{ id, path, description }`. Written by the upload handler.
 
-Workspace State is small, structured, and mutable. It is the single source of truth for "what is this project right now."
+Workspace State is small, structured, and mutable. Scene build status, source file paths, and build errors are **not** persisted here — they live in the subagent's `## Summary` reply (read by the Planner that turn) and on the filesystem under `SANDBOX_WORKSPACE_DIR/src/` (consumed by the Phase 4 read-through routes). Canonical schema: [`tasks/phase-3-memory-and-state.md`](tasks/phase-3-memory-and-state.md).
 
 #### Project Knowledge Store
 
-Holds the heavy content from uploaded files: chunked text from large PDFs and brand guides, with embeddings for retrieval. It is **not** queried automatically on every user message. Agents call a retrieval tool only when Workspace State doesn't already have the fact they need.
+Holds the heavy content from uploaded files: chunked text from large PDFs and brand guides, with embeddings for retrieval. It is **not** queried automatically on every user message. Only the Planner and Art Director can call retrieval, on demand, at most once per turn. The Implementor has no retrieval tool.
 
-What goes where, by upload type:
-
-| Input | Lands in |
-|---|---|
-| Short text or markdown | Workspace State (full content inlined) |
-| Large PDF or doc | Knowledge Store (chunks) + Workspace State (summary + pointer) |
-| Tiny CSV | Workspace State (inlined) |
-| Analytical CSV | Execution store + Workspace State (schema, summary, derived facts) |
-| Image asset (logo) | Workspace State (typed asset entry with metadata) |
-| Reference image | Conversation context for that turn |
-| Generated artifacts | Workspace State |
-
-The principle: **default to Workspace State; the Knowledge Store is the exception, used only for content that is too large to fit in context.** See [`docs/pdf-upload-walkthrough.md`](docs/pdf-upload-walkthrough.md) and [`docs/upload-walkthroughs.md`](docs/upload-walkthroughs.md) for end-to-end traces.
+The principle: **default to Workspace State; the Knowledge Store is the exception, used only for content that is too large to fit in context.** For per-input-type ingest traces (PDF chunking, CSV file copy, image `kind` dispatch, fonts), see [`docs/upload-walkthroughs.md`](docs/upload-walkthroughs.md). For state-layer principles, retrieval rules, and the agent read/write matrix, see [`docs/project-knowledge-and-skills.md`](docs/project-knowledge-and-skills.md).
 
 ### Sandbox
 
@@ -366,12 +353,12 @@ Structural change -> Planner -> Art Director -> Implementor -> Preview
 Error fix -> Planner -> Implementor -> Preview
 ```
 
-| User Request | Type | Route |
-|---|---|---|
-| "Make the title bigger." | Exact tweak | Planner → Implementor |
-| "Make the intro more energetic." | Creative change | Planner → Art Director → Implementor |
-| "Add a pricing scene." | Structural change | Planner → Art Director → Implementor |
-| "Fix the typecheck error." | Error fix | Planner → Implementor |
+| User Request                     | Type              | Route                                |
+| -------------------------------- | ----------------- | ------------------------------------ |
+| "Make the title bigger."         | Exact tweak       | Planner → Implementor                |
+| "Make the intro more energetic." | Creative change   | Planner → Art Director → Implementor |
+| "Add a pricing scene."           | Structural change | Planner → Art Director → Implementor |
+| "Fix the typecheck error."       | Error fix         | Planner → Implementor                |
 
 Small changes stay fast. Larger creative changes go through the Art Director to keep the design consistent.
 
@@ -438,23 +425,9 @@ Additional safety rules include:
 
 ## Technical Stack
 
-The project uses a modern TypeScript-based stack.
+For the canonical tech stack table (frontend, agent framework, sandbox transport, persistence, validation, with doc links), see [`AGENTS.md`](AGENTS.md#tech-stack-quick-reference).
 
-| Layer | Technology |
-|---|---|
-| Frontend | Vite and React |
-| Styling | Tailwind CSS |
-| Video rendering and preview | Remotion |
-| Streaming chat UI | AI SDK React utilities |
-| Agent framework | Mastra |
-| Workspace state | Mastra memory and LibSQL concepts |
-| Knowledge store | Vector index for large uploaded docs (queried on demand) |
-| Execution boundary | Local sandbox service (separate Bun process, no Docker) |
-| Tool protocol | MCP (HTTP) between main app and sandbox service |
-| Package management | Bun workspaces |
-
-This stack supports a local development workflow where the frontend, backend, and sandbox can run as separate cooperating services.
-
+The stack is a modern TypeScript monorepo (Bun workspaces) with three cooperating services — Vite frontend, Mastra backend, and a local Bun sandbox exposed over MCP/HTTP.
 
 ## User Story 1: Founder Creates A Launch Video
 
@@ -496,7 +469,7 @@ A designer is launching a new brand identity for a client. They have a logo file
 
 ## Why This Design Matters
 
-Editing Agent is not a chatbot that writes code. It is a structured creative production system.
+Motion Graphics Agent is not a chatbot that writes code. It is a structured creative production system.
 
 Each agent protects a different part of the quality. The Planner makes sure the system understands what the user actually wants before doing anything. The Art Director makes sure the video has a clear visual direction before any code is written. The Implementor makes sure the code works before the result is shown.
 

@@ -1,323 +1,266 @@
 # Upload Walkthroughs
 
-End-to-end traces for non-PDF upload types under the 3-layer model (Conversation Context, Workspace State, Project Knowledge Store).
+End-to-end traces for every supported upload type in T1B.
 
-For the PDF case, see [`pdf-upload-walkthrough.md`](pdf-upload-walkthrough.md).
+**Accepted types (MVP):** images (`image/*`), PDF (`application/pdf`), markdown (`text/markdown`, `.md`), plain text (`text/plain`, `.txt`), CSV (`text/csv`). Everything else (fonts, video, audio, archives, executables) is rejected at the router with `415 Unsupported Media Type`.
 
-The shared principle: the **upload router** decides at upload time where the file lands. Small/structured artifacts go directly into Workspace State. Only large unstructured documents go into the chunked Knowledge Store.
+The shared principle: the **upload router** decides at upload time where the file lands, based on mime type and an optional `kind` hint from the caller. Only images become Workspace State `Asset` rows. Large unstructured documents (PDF / markdown / text) go into the chunked Knowledge Store. CSVs are stored as raw files for the Implementor to operate on; nothing about CSVs is pre-processed by T1.
+
+For the canonical layer definitions, see [`../PROJECT_OVERVIEW.md`](../PROJECT_OVERVIEW.md#project-state-layers). For the spec these walkthroughs implement, see [`../tasks/phase-3-knowledge-and-uploads.md`](../tasks/phase-3-knowledge-and-uploads.md). For the layer principles, see [`project-knowledge-and-skills.md`](project-knowledge-and-skills.md).
+
+---
+
+## PDF / Large Document Walkthrough
+
+The full trace for a PDF upload.
+
+### Setup
+
+User starts a new project, types a prompt, and attaches `brand-guide.pdf` (say, 40 pages).
+
+### Step 1: Upload Lands
+
+The frontend posts the file to `POST /uploads` with `projectId` and (for PDFs) no `kind` hint needed.
+
+```text
+brand-guide.pdf
+   │
+   ▼
+ingest.ts dispatches by mime → handlers/pdf.ts
+```
+
+### Step 2: Ingestion Into Knowledge Store
+
+This happens once, at upload time, **before the user sends their question**. The PDF handler does exactly this and nothing more:
+
+```text
+brand-guide.pdf
+   │
+   ├─ pdf-parse → text
+   ├─ chunker.ts → ~500-token chunks, ~50-token overlap
+   ├─ embeddings.ts → embedMany() against EMBEDDING_BASE_URL
+   │     (cached by chunk-text hash so re-uploads don't re-embed)
+   └─ store.ts → LibSQLVector upsert with row shape:
+       { id, projectId, source, chunkIndex, text, embedding, metadata }
+```
+
+No auto-summary is generated. No mirror entry is written to Workspace State. The PDF's existence is implicit: when the Planner or Art Director needs a fact from it, they call `retrieveProjectKnowledge`.
+
+### Step 3: User Sends Their Prompt
+
+```text
+"Make a 20-second launch video. Match the brand guide I uploaded."
+```
+
+### Step 4: Planner Decides Whether To Retrieve
+
+The Planner sees the user message and the existing Workspace State (probably empty at this point). The brand guide is **not** announced via state — the Planner is told in conversation that a PDF was uploaded, or it infers from the prompt. Either way, it has the option to call:
+
+```ts
+retrieveProjectKnowledge({ query: "primary brand colors and tone", k: 6 })
+```
+
+The tool embeds the query, runs `LibSQLVector.query(...)` partitioned by `projectId`, and returns:
+
+```ts
+[
+  { text: '...chunk text...', source: 'brand-guide.pdf', score: 0.83 },
+  ...
+]
+```
+
+The Planner reads the chunks and writes the brief:
+
+```ts
+setBrief({
+  goal: "20-second launch video",
+  audience: "...",
+  tone: "confident, minimal",
+  duration: 20,
+  ...
+})
+```
+
+The retrieved chunks are **not** stored anywhere — they were a one-time lookup that informed the brief.
+
+### Step 5: Art Director
+
+The Art Director reads `brief` from working memory. If a specific design fact is missing (e.g. animation pacing guidance), it calls `retrieveProjectKnowledge` itself. Otherwise it works from the brief alone, then writes `styleContext` and per-scene `sceneRegistry[n].design`.
+
+### Step 6: Implementor
+
+The Implementor has no retrieval tool and no memory-write tools. It reads `styleContext` and `sceneRegistry[n].design` from working memory (read-only) and runs the sandbox MCP tools to produce code. The brand guide is invisible to it; everything it needs is already distilled into the design.
+
+### Step 7: Follow-Up Edits
+
+User: *"Make the intro bolder."*
+
+Planner classifies this as a design tweak, dispatches Art Director with the existing scene context. AD may or may not retrieve from the brand guide depending on whether it needs a fact (e.g. an alternate accent color) it doesn't already have in `styleContext`. Single retrieval call per turn at most; never per paragraph.
+
+### Key Properties
+
+- PDF is **chunked + embedded once**, at upload, partitioned by `projectId`.
+- No automatic summary, no Workspace State mirror — the doc is reachable only via `retrieveProjectKnowledge`.
+- Retrieval is a **tool call**, fired on demand by Planner or Art Director only. Implementor never sees it.
+- Embedding cache keys on chunk-text hash; re-uploading the same file is free.
+- No cross-project memory — chunks are scoped to `projectId`.
 
 ---
 
 ## CSV Upload Walkthrough
 
-### Setup
-
-User starts a project and attaches `productivity-metrics.csv` along with a prompt.
+T1 treats CSVs as raw files. There is no parsing, no schema extraction, no summary, no embedding, no execution store.
 
 ### Step 1: Upload Lands
-
-The frontend uploads the file. The upload router classifies it.
-
-```text
-productivity-metrics.csv (e.g. 5,000 rows)
-   │
-   ▼
-Upload Router
-   │
-   ├─ tiny CSV (handful of rows)?  → inline as text into Workspace State
-   └─ analytical CSV?              → execution pipeline (recommended path)
-```
-
-CSV is **not** a classic RAG case. We do not embed raw rows and search them semantically — that produces poor results and wastes tokens. CSV is structured data; the right operation is execution, not retrieval.
-
-### Step 2: Ingestion Into Execution Storage
-
-For an analytical CSV, this happens once, at upload time, before the user's question runs.
 
 ```text
 productivity-metrics.csv
    │
-   ├─ parse into a dataframe / SQLite table
-   ├─ extract schema (columns, types, row count)
-   ├─ optionally compute lightweight summary stats
-   │   (min, max, mean, distinct counts)
-   └─ register an entry:
-        { id, source, schema, rowCount, sampleRows, summaryStats }
+   ▼
+ingest.ts dispatches by extension → handlers/csv.ts
 ```
 
-The raw rows live in the execution store (SQLite or dataframe). They are **not** embedded.
-
-### Step 3: Workspace State Gets A Lightweight Reference
+### Step 2: Copy To Uploads Folder
 
 ```text
-WorkspaceState.datasets += {
-  source: 'productivity-metrics.csv',
-  schema: [
-    { name: 'team',       type: 'string' },
-    { name: 'date',       type: 'date'   },
-    { name: 'tasks_done', type: 'number' }
-  ],
-  rowCount: 5000,
-  sampleRows: [ ...first 5 rows... ],
-  summary: 'Daily team productivity, 12 teams, 2024-01 to 2024-12.',
-  executionStoreId: 'csv-xyz789'
-}
+productivity-metrics.csv
+   │
+   └─ copy to SANDBOX_WORKSPACE_DIR/uploads/<assetId>.csv
 ```
 
-The Planner can see the schema and a small sample without querying. That is usually enough to plan a video around the data.
+That's it. No row, no Knowledge Store entry, no working-memory write.
 
-### Step 4: User Sends Their Prompt
+### Step 3: Implementor Operates On The File If Needed
 
-```text
-"Make a 30-second video showing how productivity improved
- after we shipped the new editor."
-```
+If a downstream scene needs to derive a fact from the CSV, the Planner instructs the Implementor in natural language ("read `uploads/<file>.csv` and chart the monthly average"). The Implementor uses sandbox tools (`read_file`, `exec_command`) to parse and compute inside the sandbox. Any derived facts it needs to surface end up in the rendered video, not in working memory.
 
-### Step 5: Planner Reads Workspace State
+### Why This Path
 
-The Planner sees the dataset entry: schema, row count, summary. It decides what specific facts the video needs.
+CSV is structured data — embedding raw rows for vector search produces poor results and wastes tokens. Real analysis is a code-execution problem, which the Implementor already has via sandbox tools. T1 deliberately stops at "make the file reachable to the sandbox."
 
-To turn the data into a story, it doesn't read 5,000 rows — it asks for the answer. The Planner calls a tool:
-
-```text
-run_data_query(
-  executionStoreId: 'csv-xyz789',
-  intent: "compare average tasks_done before and after 2024-06"
-)
-```
-
-Internally this either:
-- Lets the model write SQL/Python that runs in the sandbox, or
-- Uses a constrained query interface.
-
-The execution returns a small structured result:
-
-```text
-{
-  before: { avg_tasks_done: 14.2, period: 'Jan–May 2024' },
-  after:  { avg_tasks_done: 22.7, period: 'Jun–Dec 2024' },
-  delta:  '+59.9%'
-}
-```
-
-This is a **derived fact**, not raw rows. It is small, exact, and ready for storytelling.
-
-### Step 6: Result Is Stored In Workspace State
-
-```text
-WorkspaceState.dataSummaries += {
-  source: 'productivity-metrics.csv',
-  query: 'avg tasks_done before/after 2024-06',
-  result: { before: 14.2, after: 22.7, delta: '+59.9%' },
-  derivedFor: 'video brief'
-}
-```
-
-The Planner uses these facts to build the brief:
-
-```text
-brief.keyMessages = [
-  "Productivity rose 60% after the new editor launched"
-]
-```
-
-### Step 7: Downstream Agents
-
-- **Art Director** reads the brief and designs a "metric reveal" scene.
-- **Implementor** writes the Remotion code, animating the number rising from 14.2 to 22.7.
-
-Neither needs to touch the CSV again. The fact is already in Workspace State.
-
-### Step 8: Follow-Up Edits
-
-User: *"Show the same number but per team."*
-
-The Planner sees the existing dataset entry and runs a new query:
-
-```text
-run_data_query(
-  executionStoreId: 'csv-xyz789',
-  intent: "average tasks_done per team, before vs after 2024-06"
-)
-```
-
-A new `dataSummaries` entry is added. The Art Director updates the scene design. The Implementor updates the code.
-
-### Tiny CSV Exception
-
-If the CSV is small enough to inline (a dozen rows or so), skip the execution pipeline. Just paste the rows into Workspace State as text. The Planner reads them directly.
+A more sophisticated CSV pipeline (parse-to-SQLite, schema-aware queries, derived-facts in Workspace State) is plausible later; it is **not part of T1**.
 
 ### Key Properties
 
-- CSV is parsed and executed, not embedded.
-- The Planner sees schema + sample + summary up front, runs queries on demand for specific facts.
-- Derived facts go into Workspace State; raw rows do not.
-- Each query is small, deterministic, and reusable.
-- Tiny CSVs skip the pipeline entirely.
+- File is copied to `uploads/`, never embedded, never parsed by the upload handler.
+- No `Asset` row is created (CSVs aren't reusable visual assets).
+- The Implementor reads the raw file in the sandbox if a scene calls for it.
 
 ---
 
 ## Image Upload Walkthrough
 
-Images have **two different intents**, and the upload router needs to decide which one applies up front.
+Images have two intents and the caller declares which via the `kind` form field.
 
 ```text
 image upload
-  ├─ understanding mode: "what is in this image?"
-  │     → multimodal input or VLM-to-text description
+  ├─ kind=asset:    "use this image in the video"
+  │     → copy + Asset row in working memory
   │
-  └─ asset mode: "use this image in the video"
-        → extract metadata + keep file path
+  └─ kind=reference: "look at this for inspiration"
+        → attach to conversation message, no Asset row
 ```
 
-### Asset Mode (most common case)
+The Planner decides which intent applies during conversation and sets `kind` when it instructs the frontend (or the user picks via UI). T1 trusts the hint; it does not classify on its own.
 
-The user uploads a logo, a product screenshot, a brand illustration — something that should *appear in* the generated video.
+### Asset Mode
+
+The user uploads a logo, product screenshot, or brand illustration that should *appear in* the generated video.
 
 #### Step 1: Upload Lands
 
 ```text
-logo-dark.png
+logo-dark.png  (multipart: kind=asset, projectId=...)
    │
    ▼
-Upload Router → asset mode
+ingest.ts dispatches by mime + kind → handlers/image.ts (asset path)
+   │
+   └─ delegates to handlers/asset.ts for the copy + Asset row
 ```
 
-#### Step 2: Metadata Extraction
-
-This happens once, at upload time. A vision model is run **once** to describe the image. The result is structured metadata, not a raw embedding of pixels.
+#### Step 2: File Copy + Asset Row
 
 ```text
 logo-dark.png
    │
-   ├─ run VLM once → description, dominant colors,
-   │                 detected text, style notes, transparency
-   ├─ store original file path (read-only uploads area)
-   └─ register an asset entry
+   ├─ copy to SANDBOX_WORKSPACE_DIR/assets/<assetId>.png
+   └─ call addAsset({
+        id: '<assetId>',
+        path: 'assets/<assetId>.png',  // relative to sandbox workspace
+        description: ''
+      })
 ```
 
-#### Step 3: Workspace State Gets The Asset
+`description` is intentionally empty in T1. A multimodal description step (VLM-once-at-upload, populating `description`) will be added when an image-capable model is wired up; the field is already in the schema so no migration is needed later.
+
+#### Step 3: Agents Use The Asset
+
+- **Planner** sees `assets[]` in working memory and references the asset by id when writing the brief.
+- **Art Director** uses asset ids in scene designs ("scene 5: full-bleed reveal of asset `<id>`").
+- **Implementor** reads `Asset.path` from working memory and includes the file in the Remotion code via the sandbox.
+
+The image is never re-embedded, never re-described, never re-uploaded.
+
+### Reference Mode
+
+The user uploads a screenshot or sketch and says *"make something like this"*. The image should not appear in the video — the model needs to reason about it for the current turn.
 
 ```text
-WorkspaceState.assets += {
-  name: 'logo-dark',
-  path: '/uploads/logo-dark.png',
-  role: 'logo',
-  description: 'Primary brand logo, dark variant',
-  colors: ['#000000', '#FFD700'],
-  detectedText: 'Brand Name',
-  style: 'minimal, high contrast',
-  hasTransparency: true
-}
+image upload (kind=reference)
+   │
+   └─ handlers/image.ts (reference path):
+       normalize to a content block on the current chat message;
+       no Asset row; no copy to assets/
 ```
 
-Just like with PDFs, agents get free awareness via Workspace State without re-running the VLM.
-
-#### Step 4: Agents Use The Asset
-
-- **Planner** sees the asset list and includes the logo in the brief.
-- **Art Director** uses the logo's colors and style to inform `styleContext`. Decides the closing scene reveals the logo.
-- **Implementor** reads `assets[].path` and includes the file in the Remotion code.
-
-The VLM is **not re-run**. The metadata already captured what's needed.
-
-#### Step 5: Follow-Up Edits
-
-User: *"Use the light logo instead."*
-
-If the user uploaded both variants, both are already in `assets[]`. The Planner picks the right entry, the Implementor swaps the path. No retrieval, no VLM call.
-
-If the variant is missing, the system can ask the user to upload it.
-
-### Understanding Mode
-
-The user uploads a reference screenshot or a sketch and says *"make something like this"*. The image is not meant to appear in the video — the model needs to reason about it.
-
-Two paths:
-
-- **Multimodal model**: pass the image directly to the model as an image input block on the current turn. No persistent storage needed. The model "sees" it for that turn.
-- **Text-only model**: run the image through a VLM once, store the description as text, inject the description into context.
-
-Either way, the description (or image input) is part of the **conversation context for that turn**, not a permanent Workspace State entry — unless the user wants to keep it as a reference artifact.
+For multimodal-capable models, the image block is passed directly. For text-only models, the handler runs a one-time VLM-to-text description and inserts the description into the message. (Same VLM dependency as the asset-mode `description` field — both light up together when the multimodal model lands. Until then, reference mode is best avoided in the UI.)
 
 ### Key Properties
 
-- Asset mode: VLM runs once, metadata + file path go into Workspace State, the original file stays in the uploads area.
-- Understanding mode: image (or its description) is consumed in conversation context for the relevant turn.
-- The VLM is never re-run on the same file unless the file changes.
-- Pixels are never embedded for vector retrieval. Searching assets uses metadata fields.
+- Asset mode: file copied to `assets/`, `Asset` row appended to working memory with `description: ''`. Pixels are never embedded.
+- Reference mode: image lives only on the conversation message for that turn.
+- VLM-derived metadata is deferred; the schema reserves `description` for it.
 
 ---
 
-## Small Text Upload Walkthrough
+## Font Upload Walkthrough
 
-A short text file, a markdown brief, or a small notes file. Anything that fits comfortably in context (rule of thumb: under ~4K tokens of extracted text).
-
-### Step 1: Upload Lands
+Fonts (`.ttf`, `.otf`, `.woff`, `.woff2`) are handled by the generic asset handler.
 
 ```text
-brief.md (about 2KB)
+brand-font.woff2  (multipart: projectId=...)
    │
    ▼
-Upload Router → small text → inline path
+ingest.ts dispatches by mime → handlers/asset.ts
+   │
+   ├─ copy to SANDBOX_WORKSPACE_DIR/assets/<assetId>.woff2
+   └─ addAsset({ id, path: 'assets/<id>.woff2', description: '' })
 ```
 
-### Step 2: Inline Into Workspace State
-
-No chunking. No embedding. No vector index. The full text goes straight into Workspace State.
-
-```text
-WorkspaceState.documents += {
-  source: 'brief.md',
-  inlinedContent: '...full file text...',
-  inlined: true
-}
-```
-
-Optionally, a one-line summary is also generated for quick scanning.
-
-### Step 3: Planner Reads It Directly
-
-When the Planner runs, the full document text is included in its context (or pulled from Workspace State directly). No retrieval tool is needed.
-
-The Planner extracts the relevant facts:
-
-```text
-brief.goal = "30-second product walkthrough"
-brief.audience = "developers"
-brief.tone = "friendly, clear"
-```
-
-### Step 4: Downstream
-
-The brief is now structured in Workspace State. The Art Director and Implementor work from the brief, not from the original `brief.md`. The original file is rarely touched again.
-
-### Why This Path Exists
-
-- Embedding short text is wasteful: chunking, vector storage, and retrieval all cost more than just including the file in the prompt.
-- Retrieval over a 2KB file produces worse results than reading the whole thing — there's nothing to retrieve.
-- The simplest path is the right path when the content fits.
-
-### Key Properties
-
-- No chunking, no embeddings, no retrieval tool.
-- Full content lives in Workspace State.
-- Agents read it like any other Workspace State field.
-- The path scales: anything bigger crosses into the PDF/large-doc pipeline instead.
+Same mechanics as image asset mode. The Implementor references the file by path inside Remotion when registering the font.
 
 ---
 
 ## Summary Table
 
-| Input Type | Pipeline | Lives In | Retrieval At Query Time? |
+| Input Type | Handler | Persisted To | Retrieval At Query Time? |
 |---|---|---|---|
-| Small text / markdown | Inline directly | Workspace State (full content) | No |
-| Large text / PDF | Chunk → embed → index + auto-summary | Knowledge Store (chunks) + Workspace State (summary) | On demand only |
-| Tiny CSV | Inline as text | Workspace State | No |
-| Analytical CSV | Parse → execute → derive facts | Execution store + Workspace State (schema, summaries, derived facts) | Only as data queries, not vector retrieval |
-| Image (asset) | VLM once → metadata | Workspace State (typed asset entry) | No (metadata already in state) |
-| Image (understanding) | Multimodal input or VLM-to-text | Conversation context for that turn | Not applicable |
-| Generated artifacts (briefs, designs, scenes, errors) | Built by agents | Workspace State | No (read directly) |
-| Skills | Search → load → read | Skill loader (separate from RAG) | On demand via skill tools |
+| PDF / large doc | `pdf.ts` | Knowledge Store (chunks) | On demand via `retrieveProjectKnowledge` |
+| CSV | `csv.ts` | `SANDBOX_WORKSPACE_DIR/uploads/<id>.csv` | No (sandbox reads file directly when needed) |
+| Image, `kind=asset` | `image.ts` → `asset.ts` | `assets/` folder + `Asset` row in working memory | No |
+| Image, `kind=reference` | `image.ts` (reference path) | Conversation message for that turn only | Not applicable |
+| Font (`.ttf`, `.otf`, `.woff*`) | `asset.ts` | `assets/` folder + `Asset` row | No |
 
-The repeated principle: **default to Workspace State, fall back to a tool call only when a fact isn't already there.** Retrieval is the exception, not the default.
+The repeated principle: **default to Workspace State or filesystem, fall back to retrieval only for facts inside large documents.** Retrieval is the exception, not the default. Implementor never retrieves; only Planner and Art Director do.
+
+## Out Of Scope For T1
+
+These appeared in earlier drafts of this doc and are deliberately not part of T1:
+
+- Auto-summarizing PDFs at upload time and mirroring summaries into Workspace State.
+- A separate `WorkspaceState.documents` registry of uploaded files.
+- CSV parsing, schema extraction, or a `run_data_query` execution pipeline.
+- VLM-at-upload for images (the `description` field exists but stays empty).
+- Inlining small text/markdown files into Workspace State.
+
+If any of these become necessary, they get their own task spec.

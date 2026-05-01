@@ -2,7 +2,7 @@
 
 ## What You're Building
 
-A full-viewport web UI for the current editing-agent workflow:
+A full-viewport web UI for the current Motion Graphics Agent workflow:
 
 ```text
 Planner -> Art Director -> Implementor
@@ -37,24 +37,24 @@ All panels should be resizable. The shell should fill the viewport, with interna
 
 ## Tech Stack
 
-| What | Package |
-|---|---|
-| Framework | Vite + React |
-| Styling | `tailwindcss` v4 |
-| Chat | `@ai-sdk/react` |
-| Preview | `remotion`, `@remotion/player` |
-| Data | `@tanstack/react-query` |
+| What      | Package                        |
+| --------- | ------------------------------ |
+| Framework | Vite + React                   |
+| Styling   | `tailwindcss` v4               |
+| Chat      | `@ai-sdk/react`                |
+| Preview   | `remotion`, `@remotion/player` |
+| Data      | `@tanstack/react-query`        |
 
 ## Chat Integration
 
 Use `useChat()` against the Planner endpoint:
 
 ```tsx
-import { useChat } from '@ai-sdk/react'
+import { useChat } from "@ai-sdk/react";
 
 const { messages, input, handleInputChange, handleSubmit, status } = useChat({
-  api: 'http://localhost:4111/chat/planner-agent',
-})
+    api: "http://localhost:4111/chat/planner-agent",
+});
 ```
 
 The activity panel should be designed around the current role split:

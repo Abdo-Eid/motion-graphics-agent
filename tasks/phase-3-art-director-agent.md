@@ -1,12 +1,12 @@
 # Phase 3 — Art Director Agent
 
-> **Architecture note.** Invoked as a subagent by the Planner via `delegateToArtDirector`. See [`phase-3-planner-agent.md`](phase-3-planner-agent.md) for the supervisor + delegation-tool wiring.
+> **Architecture note.** Invoked as a subagent by the Planner via the auto-generated `agent-artDirector` tool (Mastra supervisor pattern). See [`phase-3-planner-agent.md`](phase-3-planner-agent.md) for the supervisor + `delegation`-hook wiring.
 
 ## Your Role
 
 Build the **Art Director agent**. The creative design layer.
 
-The Art Director turns a Planner brief into scene-by-scene design direction. It does not write code and does not use sandbox tools. It is invoked through the Planner's delegation tool — the `/chat/artDirectorAgent` endpoint exists for direct testing only.
+The Art Director turns a Planner brief into scene-by-scene design direction. It does not write code and does not use sandbox tools. It is invoked through the auto-generated `agent-artDirector` subagent tool on the Planner — the `/chat/artDirectorAgent` endpoint exists for direct testing only.
 
 ## What the Art Director Does
 
@@ -37,7 +37,7 @@ export const artDirectorAgent = new Agent({
   id: 'art-director-agent',
   name: 'Art Director',
   instructions: `...`,
-  model: 'zai-coding-plan/glm-4.7-flash',
+  model: process.env.AGENT_MODEL!,             // provider/model string, configured at deploy time
   tools: {},
 })
 ```
@@ -57,6 +57,7 @@ Your instructions should define:
 5. **Shared memory behavior**:
    - update `styleContext` when creative decisions become explicit
    - write scene design records into `sceneRegistry`
+6. **Reply contract**: end every reply with a `## Summary` block in the shape defined in [`phase-3-planner-agent.md`](phase-3-planner-agent.md) under "Subagent Summaries". The Planner relies on this block to drive the pipeline.
 
 The output should describe animation in feel-based motion language, not API language. For example:
 
@@ -106,4 +107,4 @@ Expected result: the response should describe scene design clearly without writi
 
 - `docs/SETUP_GUIDE.md`
 - `docs/project-knowledge-and-skills.md`
-- [`phase-3-planner-agent.md`](phase-3-planner-agent.md) — supervisor + delegation tools (how the Planner invokes this agent)
+- [`phase-3-planner-agent.md`](phase-3-planner-agent.md) — supervisor wiring + `delegation` hooks (how the Planner invokes this agent)

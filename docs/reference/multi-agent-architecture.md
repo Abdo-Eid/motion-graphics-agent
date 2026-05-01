@@ -1,7 +1,6 @@
 # Multi-Agent Architecture — Revised Split
 
-> **Last updated:** 2026-04-21
-> **Status:** Architecture decision — replaces the original Planner/Editor/Motion split
+> **Historical reference (2026-04-21).** Documents the Planner / Art Director / Implementor split when it was first decided. The agent responsibilities described here are still correct, but this doc **predates the current supervisor model**: routing now happens inside the Planner, which is a Mastra supervisor agent listing the other two under `agents: { ... }` so Mastra auto-generates `agent-artDirector` / `agent-implementor` tools. The registration example (`chatRoute({ path: '/chat/:agentId' })`) implies all three agents are independently HTTP-exposed, which is no longer the primary routing path. For the current routing model see `tasks/phase-3-planner-agent.md`, `docs/architecture.md`, and `AGENTS.md` → Architecture Constraints.
 
 ---
 

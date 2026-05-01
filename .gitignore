@@ -1,39 +1,59 @@
 # dependencies (bun install)
-node_modules
+node_modules/
 
-# sandbox runtime workspace
+# secrets — block every .env variant; keep .env.example tracked
+.env
+.env.*
+!.env.example
+
+# sandbox runtime workspace (user uploads, generated Remotion code, renders)
 sandbox/.workspace/
 
-# output
-out
-dist
+# local databases — LibSQL / SQLite (memory + knowledge store)
+mastra/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite-journal
+
+# build / bundle output
+out/
+dist/
+build/
+.mastra/
 *.tgz
 
-# code coverage
-coverage
-*.lcov
-
-# logs
-logs
-_.log
-report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
-
-# dotenv environment variable files
-.env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
-
 # caches
+.cache/
+.vite/
+.turbo/
 .eslintcache
-.cache
 *.tsbuildinfo
 
-# IntelliJ based IDEs
-.idea
+# logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
-# Finder (MacOS) folder config
+# coverage
+coverage/
+*.lcov
+
+# editors / IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS junk
 .DS_Store
+Thumbs.db
+desktop.ini
 
-.claude
+# Claude / agent local config
+.claude/
