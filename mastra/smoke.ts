@@ -34,11 +34,17 @@ console.log("  deployment:", AZURE_CHAT_DEPLOYMENT);
 console.log("  api-version:", AZURE_API_VERSION);
 
 // Azure's /openai/v1 surface needs ?api-version=... on every request.
-const azureFetch: typeof fetch = (input, init) => {
-  const url = new URL(input.toString());
-  url.searchParams.set("api-version", AZURE_API_VERSION);
-  return fetch(url, init);
-};
+const azureFetch = Object.assign(
+  (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(input.toString());
+    url.searchParams.set("api-version", AZURE_API_VERSION);
+    return fetch(url, init);
+  },
+  {
+    preconnect: (...args: Parameters<typeof fetch.preconnect>) =>
+      fetch.preconnect?.(...args),
+  },
+) satisfies typeof fetch;
 
 const openai = createOpenAI({
   apiKey: AZURE_API_KEY,
@@ -47,6 +53,7 @@ const openai = createOpenAI({
 });
 
 const agent = new Agent({
+  id: "smoke",
   name: "smoke",
   instructions: "Reply with exactly the word: pong",
   model: openai.chat(AZURE_CHAT_DEPLOYMENT),
