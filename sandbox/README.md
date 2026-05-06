@@ -16,7 +16,7 @@ The MCP endpoint will be available at `http://localhost:${SANDBOX_HTTP_PORT}/mcp
 
 ## Workspace
 
-All file operations and command execution are scoped to `SANDBOX_WORKSPACE_DIR` (default `./.workspace/`). This folder is `.gitignore`d. Paths supplied to tools are resolved relative to this root and rejected if they escape it.
+All file operations and command execution are scoped to the workspace root resolved in `src/index.ts` (`process.env.WORKSPACE_PATH ?? <repo>/sandbox/.workspace`, computed file-anchored from `import.meta.url`). The default directory is `.gitignore`d. Paths supplied to tools are resolved relative to this root and rejected if they escape it.
 
 ## Tool Surface
 

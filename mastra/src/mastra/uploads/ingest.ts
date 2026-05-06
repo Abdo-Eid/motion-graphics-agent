@@ -1,4 +1,11 @@
-﻿export type UploadKind = 'asset' | 'reference' | string | undefined;
+﻿import { extname } from 'node:path';
+
+import { handle as handleCsv } from './handlers/csv';
+import { handle as handleImage } from './handlers/image';
+import { handle as handlePdf } from './handlers/pdf';
+import { handle as handleText } from './handlers/text';
+
+export type UploadKind = 'asset' | 'reference';
 export type IngestStatus = 'pending' | 'done' | 'errored';
 export type UploadHandlerKind = 'pdf' | 'text' | 'csv' | 'image';
 
@@ -18,81 +25,43 @@ export interface IngestResult {
   source?: string;
 }
 
-export interface StatusEvent {
-  assetId: string;
-  status: IngestStatus;
-  message?: string;
-  error?: string;
-}
+export async function ingestUpload(input: UploadInput): Promise<IngestResult> {
+  const handlerKind = detectHandlerKind(input);
 
-export interface IngestContext {
-  emitStatus: (event: StatusEvent) => void;
-}
+  if (handlerKind === null) {
+    return { assetId: input.assetId, ingestStatus: 'errored' };
+  }
 
-export type UploadHandler = (
-  input: UploadInput,
-  ctx: IngestContext,
-) => Promise<IngestResult>;
-
-export interface UploadHandlers {
-  pdf: UploadHandler;
-  text: UploadHandler;
-  csv: UploadHandler;
-  image: UploadHandler;
-}
-
-export class UnsupportedUploadTypeError extends Error {
-  constructor(public readonly mime: string, public readonly originalName: string) {
-    super(`Unsupported upload type: ${mime || 'unknown'} (${originalName})`);
-    this.name = 'UnsupportedUploadTypeError';
+  switch (handlerKind) {
+    case 'pdf':
+      return handlePdf(input);
+    case 'text':
+      return handleText(input);
+    case 'csv':
+      return handleCsv(input);
+    case 'image':
+      return handleImage(input);
   }
 }
 
-export async function ingestUpload(
-  input: UploadInput,
-  handlers: UploadHandlers,
-  ctx: IngestContext,
-): Promise<IngestResult> {
-  emit(ctx, {
-    assetId: input.assetId,
-    status: 'pending',
-    message: 'Upload received',
-  });
-
-  try {
-    const handlerKind = detectHandlerKind(input);
-    const result = await handlers[handlerKind](input, ctx);
-
-    emit(ctx, {
-      assetId: input.assetId,
-      status: result.ingestStatus,
-    });
-
-    return result;
-  } catch (error) {
-    emit(ctx, {
-      assetId: input.assetId,
-      status: 'errored',
-      error: errorMessage(error),
-    });
-
-    throw error;
-  }
-}
-
-export function detectHandlerKind(input: Pick<UploadInput, 'mime' | 'originalName'>): UploadHandlerKind {
+/**
+ * Returns null for unsupported MIME types (caller should respond 415).
+ */
+export function detectHandlerKind(
+  input: Pick<UploadInput, 'mime' | 'originalName'>,
+): UploadHandlerKind | null {
   const mime = normalizeMime(input.mime);
-  const extension = extensionOf(input.originalName);
+  const extension = extname(input.originalName).toLowerCase();
 
   if (mime === 'application/pdf') {
     return 'pdf';
   }
 
-  if (isTextUpload(mime, extension)) {
+  if ((mime === 'text/plain' && extension === '.txt') || (mime === 'text/markdown' && extension === '.md')) {
     return 'text';
   }
 
-  if (isCsvUpload(mime, extension)) {
+  if (mime === 'text/csv' && extension === '.csv') {
     return 'csv';
   }
 
@@ -100,40 +69,9 @@ export function detectHandlerKind(input: Pick<UploadInput, 'mime' | 'originalNam
     return 'image';
   }
 
-  throw new UnsupportedUploadTypeError(input.mime, input.originalName);
-}
-
-function isTextUpload(mime: string, extension: string): boolean {
-  return (mime === 'text/plain' && extension === '.txt')
-    || (mime === 'text/markdown' && extension === '.md');
-}
-
-function isCsvUpload(mime: string, extension: string): boolean {
-  return mime === 'text/csv' && extension === '.csv';
+  return null;
 }
 
 function normalizeMime(mime: string): string {
   return mime.split(';', 1)[0]?.trim().toLowerCase() ?? '';
-}
-
-function extensionOf(filename: string): string {
-  const dotIndex = filename.lastIndexOf('.');
-
-  if (dotIndex === -1) {
-    return '';
-  }
-
-  return filename.slice(dotIndex).toLowerCase();
-}
-
-function emit(ctx: IngestContext, event: StatusEvent): void {
-  ctx.emitStatus(event);
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return 'Upload ingestion failed';
 }

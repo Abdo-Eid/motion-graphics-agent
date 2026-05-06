@@ -128,6 +128,20 @@ The architecture separates user experience, agent reasoning, and code execution 
 
 The frontend never calls the AI model directly. It streams messages and status updates from the backend. The backend owns the agents, memory, retrieval, and model calls. The sandbox is the controlled environment where generated code is read, written, and verified.
 
+## Terminology
+
+The word "workspace" is overloaded in this codebase. Three distinct things use the word; they are not the same.
+
+| Term | What it is | Where it lives |
+|---|---|---|
+| **Workspace State** | The repo's name for structured project state (`brief`, `styleContext`, `sceneRegistry`, `assets`). Implemented as Mastra **working memory** with a zod schema, thread-scoped per project. | `mastra/src/mastra/memory/` |
+| **`sandboxRoot`** | A filesystem directory shared between the Mastra server (upload handlers, Phase 4 read-through routes) and the Bun sandbox MCP service. Default: `<repo>/sandbox/.workspace`. | `mastra/src/mastra/sandbox-root.ts`, mirrored in `sandbox/src/index.ts` |
+| **Mastra Workspace** | The framework feature in `@mastra/core/workspace` that gives agents `read_file`, `write_file`, `execute_command`, LSP, skills, and search tools. **Not used in this repo.** Filesystem access for the Implementor goes through the separate Bun sandbox MCP service instead — see `docs/local-sandbox-service-design.md`. | n/a (not adopted) |
+
+Additionally, "Bun workspaces" (the monorepo packaging concept covering `web/`, `mastra/`, `sandbox/`) is unrelated word reuse from the package manager.
+
+When you see `memory: { workspace: memory }` in `mastra/src/mastra/index.ts`, the key `workspace` is a Mastra memory **registry identifier** (so `mastra.getMemory("workspace")` and Studio's Memory tab work). It is not `@mastra/core/workspace` either.
+
 ## System Design Principles
 
 ### Separation Of Responsibilities
@@ -265,7 +279,7 @@ Holds the live state of the project as Mastra **working memory** (zod schema, th
 - **`sceneRegistry[n].design`** — per-scene creative direction. Owned by the Art Director. Schema deliberately holds only `{ number, name, design }` — no status, no file paths, no errors.
 - **`assets[]`** — uploaded image and font assets as `{ id, path, description }`. Written by the upload handler.
 
-Workspace State is small, structured, and mutable. Scene build status, source file paths, and build errors are **not** persisted here — they live in the subagent's `## Summary` reply (read by the Planner that turn) and on the filesystem under `SANDBOX_WORKSPACE_DIR/src/` (consumed by the Phase 4 read-through routes). Canonical schema: [`tasks/phase-3-memory-and-state.md`](tasks/phase-3-memory-and-state.md).
+Workspace State is small, structured, and mutable. Scene build status, source file paths, and build errors are **not** persisted here — they live in the subagent's `## Summary` reply (read by the Planner that turn) and on the filesystem under `<workspace>/src/` (consumed by the Phase 4 read-through routes). Canonical schema: [`tasks/phase-3-memory-and-state.md`](tasks/phase-3-memory-and-state.md).
 
 #### Project Knowledge Store
 

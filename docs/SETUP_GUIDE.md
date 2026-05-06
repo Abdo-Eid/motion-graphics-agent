@@ -118,12 +118,12 @@ motion-graphics-agent/
     AZURE_CHAT_DEPLOYMENT=<chat-deployment-name>
     AZURE_EMBEDDING_DEPLOYMENT=<embedding-deployment-name>
     SANDBOX_MCP_URL=http://localhost:4311/mcp
-    SANDBOX_WORKSPACE_DIR=./sandbox/.workspace
     SANDBOX_HTTP_PORT=4311
-    LIBSQL_URL=file:./mastra/data/motion-graphics-agent.db
+    # Optional. Defaults to <repo>/sandbox/.workspace.
+    # WORKSPACE_PATH=C:\absolute\path\to\workspace
     ```
 
-    The app uses `@ai-sdk/azure` through `mastra/src/mastra/model.ts`; do not add `AGENT_MODEL` or provider-router env vars for the Phase 3 agents.
+    The app uses `@ai-sdk/azure` through `mastra/src/mastra/model.ts`; do not add `AGENT_MODEL` or provider-router env vars for the Phase 3 agents. The LibSQL DB path is **not** an env var — both Memory and the Knowledge Store pin `file:./mastra.db` (resolves to `mastra/mastra.db` at runtime).
 
 8. Run `bun install` from root to link workspaces.
 

@@ -9,11 +9,96 @@ import {
     WorkspaceStateSchema,
 } from "./schema.ts";
 
-const Role = z.enum(["planner", "artDirector", "implementor", "system"]);
+// FUTURE (Option 2 — phase-3-memory-and-state.md): when T2/T3/T4 land, each
+// real agent gets ONLY the setter tool that matches its role. Planner →
+// `setBrief`. Art Director → `setStyleContext` + `setSceneDesign`.
+// Implementor → none. The wiring in `mastra/src/mastra/index.ts` becomes
+// the primary ACL and this allowlist becomes the dead-man switch that
+// catches wiring drift. See `docs/working-memory-dilemma.md`.
+//
+// Today (T1 test phase) the single `t1-test-agent` holds all three setters
+// at once because there are no separate role-specific agents yet — it
+// stands in for all roles to verify the backend.
+
+const SET_BRIEF_ALLOWED: ReadonlySet<string> = new Set([
+    "t1-test-agent", // T1 test stand-in; remove when Planner ships.
+    "planner",
+]);
+
+const SET_STYLE_CONTEXT_ALLOWED: ReadonlySet<string> = new Set([
+    "t1-test-agent",
+    "art-director",
+]);
+
+const SET_SCENE_DESIGN_ALLOWED: ReadonlySet<string> = new Set([
+    "t1-test-agent",
+    "art-director",
+]);
+
+interface AgentToolContext {
+    agent?: {
+        agentId?: string;
+        threadId?: string;
+        resourceId?: string;
+    };
+}
+
+/**
+ * Pull the project id from Mastra's tool-call context. By the T1A convention
+ * the parent agent is invoked with `threadId === resourceId === projectId`,
+ * and Mastra propagates that to tool calls via `context.agent`. Reading it
+ * here matches `retrieveProjectKnowledge` (knowledge/retrieve.ts:43) and
+ * stops agents from being able to write to the wrong project.
+ */
+function projectIdFromContext(
+    context: AgentToolContext | undefined,
+    toolName: string,
+): string {
+    const projectId = context?.agent?.threadId ?? context?.agent?.resourceId;
+
+    if (!projectId) {
+        throw new Error(
+            `${toolName} requires a project threadId or resourceId on the agent context`,
+        );
+    }
+
+    return projectId;
+}
+
+/**
+ * Identity-based ACL: the calling agent's id comes from
+ * `context.agent.agentId`, which Mastra populates with `agent.id` at
+ * tool-call time (see `@mastra/core` v1.25 `chunk-GYS4EMOL.js:17981` —
+ * `agent: { agentId: agent.id, ... }`). It is framework-owned, not
+ * model-controlled, so an LLM cannot forge it the way it could forge a
+ * `role` argument.
+ *
+ * Throws synchronously on mismatch; the Planner's `delegation` hooks in T2
+ * will catch the throw and emit a `field-ownership-violation` event.
+ */
+function requireCaller(
+    context: AgentToolContext | undefined,
+    toolName: string,
+    allowed: ReadonlySet<string>,
+): string {
+    const agentId = context?.agent?.agentId;
+
+    if (!agentId) {
+        throw new Error(
+            `${toolName} requires context.agent.agentId — call must originate from a Mastra agent`,
+        );
+    }
+
+    if (!allowed.has(agentId)) {
+        throw new Error(
+            `${toolName} not allowed for agent "${agentId}"`,
+        );
+    }
+
+    return agentId;
+}
 
 const SetBriefInput = z.object({
-    projectId: z.string(),
-    role: Role,
     brief: BriefSchema,
 });
 
@@ -52,23 +137,24 @@ async function readWorkspaceState(projectId: string) {
     });
 
     return WorkspaceStateSchema.parse(
-        rawWorkingMemory ? JSON.parse(rawWorkingMemory) : { projectId },
+        rawWorkingMemory ? JSON.parse(rawWorkingMemory) : {},
     );
 }
 
 /**
  * Planner-owned write path for WorkspaceState.brief.
- * Future subagent delegation must keep threadId/resourceId aligned to projectId.
+ * Caller identity comes from `context.agent.agentId`; project id from
+ * `context.agent.threadId`. Neither is supplied by the model.
  */
 export const setBrief = createTool({
     id: "setBrief",
     description: "Set the project brief in thread-scoped workspace state.",
     inputSchema: SetBriefInput,
     outputSchema: SetBriefOutput,
-    execute: async ({ projectId, role, brief }) => {
-        if (role !== "planner") {
-            throw new Error("setBrief requires planner role");
-        }
+    execute: async ({ brief }, context) => {
+        requireCaller(context, "setBrief", SET_BRIEF_ALLOWED);
+
+        const projectId = projectIdFromContext(context, "setBrief");
 
         await ensureThread(projectId);
 
@@ -79,7 +165,6 @@ export const setBrief = createTool({
             resourceId: projectId,
             workingMemory: JSON.stringify({
                 ...currentState,
-                projectId,
                 brief,
             }),
         });
@@ -92,8 +177,6 @@ export const setBrief = createTool({
 });
 
 const SetStyleContextInput = z.object({
-    projectId: z.string(),
-    role: Role,
     styleContext: StyleContextSchema,
 });
 
@@ -104,17 +187,17 @@ const SetStyleContextOutput = z.object({
 
 /**
  * Art Director-owned write path for WorkspaceState.styleContext.
- * Future subagent delegation must keep threadId/resourceId aligned to projectId.
+ * Caller identity comes from `context.agent.agentId`.
  */
 export const setStyleContext = createTool({
     id: "setStyleContext",
     description: "Set the shared style context in thread-scoped workspace state.",
     inputSchema: SetStyleContextInput,
     outputSchema: SetStyleContextOutput,
-    execute: async ({ projectId, role, styleContext }) => {
-        if (role !== "artDirector") {
-            throw new Error("setStyleContext requires artDirector role");
-        }
+    execute: async ({ styleContext }, context) => {
+        requireCaller(context, "setStyleContext", SET_STYLE_CONTEXT_ALLOWED);
+
+        const projectId = projectIdFromContext(context, "setStyleContext");
 
         await ensureThread(projectId);
 
@@ -125,7 +208,6 @@ export const setStyleContext = createTool({
             resourceId: projectId,
             workingMemory: JSON.stringify({
                 ...currentState,
-                projectId,
                 styleContext,
             }),
         });
@@ -138,8 +220,6 @@ export const setStyleContext = createTool({
 });
 
 const SetSceneDesignInput = z.object({
-    projectId: z.string(),
-    role: Role,
     sceneNumber: z.number(),
     name: z.string(),
     design: z.unknown(),
@@ -156,17 +236,17 @@ const SetSceneDesignOutput = z.object({
 
 /**
  * Art Director-owned write path for WorkspaceState.sceneRegistry[n].design.
- * Future subagent delegation must keep threadId/resourceId aligned to projectId.
+ * Caller identity comes from `context.agent.agentId`.
  */
 export const setSceneDesign = createTool({
     id: "setSceneDesign",
     description: "Upsert one scene design inside thread-scoped workspace state.",
     inputSchema: SetSceneDesignInput,
     outputSchema: SetSceneDesignOutput,
-    execute: async ({ projectId, role, sceneNumber, name, design }) => {
-        if (role !== "artDirector") {
-            throw new Error("setSceneDesign requires artDirector role");
-        }
+    execute: async ({ sceneNumber, name, design }, context) => {
+        requireCaller(context, "setSceneDesign", SET_SCENE_DESIGN_ALLOWED);
+
+        const projectId = projectIdFromContext(context, "setSceneDesign");
 
         await ensureThread(projectId);
 
@@ -206,12 +286,50 @@ export const setSceneDesign = createTool({
     },
 });
 
+const AssetInput = AssetSchema.omit({ createdAt: true }).extend({
+    description: z.string().default(""),
+});
+
+type AppendAssetInput = z.input<typeof AssetInput>;
+
+/**
+ * Internal system-side append for WorkspaceState.assets. Stamps createdAt and
+ * defaults description. Used by the addAsset tool (after role check) and
+ * directly by upload handlers, which run as system and skip the role guard.
+ */
+export async function appendAsset(input: { projectId: string; asset: AppendAssetInput }) {
+    await ensureThread(input.projectId);
+
+    const currentState = await readWorkspaceState(input.projectId);
+
+    const nextAsset = {
+        ...input.asset,
+        description: input.asset.description ?? "",
+        createdAt: new Date().toISOString(),
+    };
+
+    await memory.updateWorkingMemory({
+        threadId: input.projectId,
+        resourceId: input.projectId,
+        workingMemory: JSON.stringify({
+            ...currentState,
+            assets: [...currentState.assets, nextAsset],
+        }),
+    });
+
+    return nextAsset;
+}
+
+// addAsset is system-only and never attached to an agent (per
+// phase-3-memory-and-state.md), so it keeps an explicit `role: "system"`
+// gate plus the explicit projectId — there is no calling agent context to
+// read identity from.
+const SystemRole = z.enum(["system"]);
+
 const AddAssetInput = z.object({
     projectId: z.string(),
-    role: Role,
-    asset: AssetSchema.omit({ createdAt: true }).extend({
-        description: z.string().default(""),
-    }),
+    role: SystemRole,
+    asset: AssetInput,
 });
 
 const AddAssetOutput = z.object({
@@ -220,8 +338,7 @@ const AddAssetOutput = z.object({
 });
 
 /**
- * System-owned write path for WorkspaceState.assets.
- * Future subagent delegation must keep threadId/resourceId aligned to projectId.
+ * System-owned write path for WorkspaceState.assets. NOT attached to agents.
  */
 export const addAsset = createTool({
     id: "addAsset",
@@ -233,23 +350,7 @@ export const addAsset = createTool({
             throw new Error("addAsset requires system role");
         }
 
-        await ensureThread(projectId);
-
-        const currentState = await readWorkspaceState(projectId);
-
-        const nextAsset = {
-            ...asset,
-            createdAt: new Date().toISOString(),
-        };
-
-        await memory.updateWorkingMemory({
-            threadId: projectId,
-            resourceId: projectId,
-            workingMemory: JSON.stringify({
-                ...currentState,
-                assets: [...currentState.assets, nextAsset],
-            }),
-        });
+        const nextAsset = await appendAsset({ projectId, asset });
 
         return {
             projectId,

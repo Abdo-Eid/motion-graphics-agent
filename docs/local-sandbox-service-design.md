@@ -29,7 +29,7 @@ The application and the sandbox stay as **two separate services** on the same ma
 │                         │                   │                          │
 │                         │                   │  filesystem provider:    │
 │                         │                   │   LocalFilesystem rooted │
-│                         │                   │   at SANDBOX_WORKSPACE_DIR
+│                         │                   │   at <workspace> (file-anchored)
 │                         │                   │  exec provider:          │
 │                         │                   │   child_process scoped   │
 │                         │                   │   to the workspace dir   │
@@ -105,7 +105,7 @@ sandbox/
     <skill-name>.md
 ```
 
-Workspace files live at `SANDBOX_WORKSPACE_DIR` (default `sandbox/.workspace/`), which is `.gitignore`d.
+Sandbox-root files live at the resolved path — `process.env.WORKSPACE_PATH ?? <repo>/sandbox/.workspace`, computed file-anchored from `import.meta.url` in `sandbox/src/index.ts`. The default directory is `.gitignore`d. The same resolution lives in `mastra/src/mastra/sandbox-root.ts` so both services point at the same folder regardless of CWD. (This is the sandbox filesystem root, not `@mastra/core/workspace`.)
 
 ## Configuration
 
@@ -114,7 +114,8 @@ The sandbox service reads its configuration from environment variables.
 ```env
 # sandbox/.env
 SANDBOX_HTTP_PORT=4311
-SANDBOX_WORKSPACE_DIR=./.workspace
+# Optional. Defaults to <repo>/sandbox/.workspace via file-anchored resolve.
+# WORKSPACE_PATH=C:\absolute\path\to\workspace
 SANDBOX_COMMAND_TIMEOUT_MS=60000
 SANDBOX_ALLOW_NETWORK=false
 ```
@@ -185,7 +186,7 @@ Implementation rules:
 
 This is the substitute for "container boundary":
 
-- Workspace is one folder on the host (`SANDBOX_WORKSPACE_DIR`).
+- Workspace is one folder on the host (the resolved workspace path; `WORKSPACE_PATH` overrides the file-anchored default).
 - All file operations are path-guarded to that folder.
 - All commands run with `cwd` set to that folder.
 - Commands have a hard timeout.
@@ -197,7 +198,7 @@ This is the substitute for "container boundary":
 Because workspace files live on the host filesystem, the frontend preview reads them directly. No export step is needed.
 
 ```text
-sandbox service writes to SANDBOX_WORKSPACE_DIR
+sandbox service writes to <workspace>
   -> frontend preview reads from the same path
   -> Remotion Player reloads on file change
 ```

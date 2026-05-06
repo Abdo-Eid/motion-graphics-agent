@@ -2,7 +2,7 @@
 
 End-to-end traces for every supported upload type in T1B.
 
-**Accepted types (MVP):** images (`image/*`), PDF (`application/pdf`), markdown (`text/markdown`, `.md`), plain text (`text/plain`, `.txt`), CSV (`text/csv`). Everything else (fonts, video, audio, archives, executables) is rejected at the router with `415 Unsupported Media Type`.
+**Accepted types (MVP):** images (`image/*`), PDF (`application/pdf`), markdown (`text/markdown`, `.md`), plain text (`text/plain`, `.txt`), CSV (`text/csv`). Everything else — fonts (`.ttf`, `.otf`, `.woff*`), video, audio, archives, executables — is rejected at the router with `415 Unsupported Media Type`. Custom fonts come into Remotion via skill docs / npm at code-gen time, not via uploads.
 
 The shared principle: the **upload router** decides at upload time where the file lands, based on mime type and an optional `kind` hint from the caller. Only images become Workspace State `Asset` rows. Large unstructured documents (PDF / markdown / text) go into the chunked Knowledge Store. CSVs are stored as raw files for the Implementor to operate on; nothing about CSVs is pre-processed by T1.
 
@@ -36,12 +36,15 @@ This happens once, at upload time, **before the user sends their question**. The
 ```text
 brand-guide.pdf
    │
-   ├─ pdf-parse → text
-   ├─ chunker.ts → ~500-token chunks, ~50-token overlap
-   ├─ embeddings.ts → embedMany() against embeddingModel()
-   │     (cached by chunk-text hash so re-uploads don't re-embed)
+   ├─ pdf-parse (PDFParse) → text
+   ├─ knowledge/ingest-text.ts:
+   │     MDocument.fromText(text)
+   │       .chunk({ strategy: 'recursive', maxSize: 500, overlap: 50 })
+   │     (maxSize is CHARACTERS, not tokens)
+   ├─ embedMany() against embeddingModel() — single batched call
    └─ store.ts → LibSQLVector upsert with row shape:
-       { id, projectId, source, chunkIndex, text, embedding, metadata }
+       { id: '<projectId>:<source>:<chunkIndex>',
+         projectId, source, chunkIndex, text, embedding }
 ```
 
 No auto-summary is generated. No mirror entry is written to Workspace State. The PDF's existence is implicit: when the Planner or Art Director needs a fact from it, they call `retrieveProjectKnowledge`.
@@ -102,7 +105,7 @@ Planner classifies this as a design tweak, dispatches Art Director with the exis
 - PDF is **chunked + embedded once**, at upload, partitioned by `projectId`.
 - No automatic summary, no Workspace State mirror — the doc is reachable only via `retrieveProjectKnowledge`.
 - Retrieval is a **tool call**, fired on demand by Planner or Art Director only. Implementor never sees it.
-- Embedding cache keys on chunk-text hash; re-uploading the same file is free.
+- Embedding uses one batched `embedMany` call per upload (not one-per-chunk). Re-uploading the same `(projectId, source)` pair overwrites by id; chunk hashing / cross-upload caching is intentionally **not** implemented.
 - No cross-project memory — chunks are scoped to `projectId`.
 
 ---
@@ -125,7 +128,7 @@ ingest.ts dispatches by extension → handlers/csv.ts
 ```text
 productivity-metrics.csv
    │
-   └─ copy to SANDBOX_WORKSPACE_DIR/uploads/<assetId>.csv
+   └─ copy to <workspace>/uploads/<assetId>.csv
 ```
 
 That's it. No row, no Knowledge Store entry, no working-memory write.
@@ -173,9 +176,7 @@ The user uploads a logo, product screenshot, or brand illustration that should *
 logo-dark.png  (multipart: kind=asset, projectId=...)
    │
    ▼
-ingest.ts dispatches by mime + kind → handlers/image.ts (asset path)
-   │
-   └─ delegates to handlers/asset.ts for the copy + Asset row
+ingest.ts switch on detectHandlerKind('image/png') → handlers/image.ts (asset path)
 ```
 
 #### Step 2: File Copy + Asset Row
@@ -183,12 +184,19 @@ ingest.ts dispatches by mime + kind → handlers/image.ts (asset path)
 ```text
 logo-dark.png
    │
-   ├─ copy to SANDBOX_WORKSPACE_DIR/assets/<assetId>.png
-   └─ call addAsset({
-        id: '<assetId>',
-        path: 'assets/<assetId>.png',  // relative to sandbox workspace
-        description: ''
+   ├─ copy to <workspace>/assets/<assetId>.png
+   └─ call appendAsset({
+        projectId,
+        asset: {
+          id: '<assetId>',                 // randomUUID() from node:crypto
+          path: 'assets/<assetId>.png',   // relative to <workspace>
+          originalName: 'logo-dark.png',
+          mime: 'image/png',
+          bytes,
+          description: '',                 // VLM populates later
+        },
       })
+      // appendAsset stamps createdAt and writes the assets[] row.
 ```
 
 `description` is intentionally empty in T1. A multimodal description step (VLM-once-at-upload, populating `description`) will be added when an image-capable model is wired up; the field is already in the schema so no migration is needed later.
@@ -223,21 +231,20 @@ For multimodal-capable models, the image block is passed directly. For text-only
 
 ---
 
-## Font Upload Walkthrough
+## Rejected: Fonts (and other unsupported types)
 
-Fonts (`.ttf`, `.otf`, `.woff`, `.woff2`) are handled by the generic asset handler.
+Fonts (`.ttf`, `.otf`, `.woff`, `.woff2`), video, audio, and archives are **rejected** at the router with `415 Unsupported Media Type`. The router answers with `{ "error": "Unsupported upload type: ..." }` and writes nothing to the workspace, the Knowledge Store, or working memory.
+
+Earlier drafts of this doc routed fonts through a generic asset handler. That was removed: fonts in MVP come into Remotion at code-gen time (skill docs / npm), not via the upload pipeline. If user-uploaded fonts become a real need later, that gets its own task spec.
 
 ```text
 brand-font.woff2  (multipart: projectId=...)
    │
    ▼
-ingest.ts dispatches by mime → handlers/asset.ts
+ingest.ts → detectHandlerKind() returns null
    │
-   ├─ copy to SANDBOX_WORKSPACE_DIR/assets/<assetId>.woff2
-   └─ addAsset({ id, path: 'assets/<id>.woff2', description: '' })
+   └─ router returns 415 { error: "Unsupported upload type: font/woff2 (brand-font.woff2)" }
 ```
-
-Same mechanics as image asset mode. The Implementor references the file by path inside Remotion when registering the font.
 
 ---
 
@@ -245,11 +252,12 @@ Same mechanics as image asset mode. The Implementor references the file by path 
 
 | Input Type | Handler | Persisted To | Retrieval At Query Time? |
 |---|---|---|---|
-| PDF / large doc | `pdf.ts` | Knowledge Store (chunks) | On demand via `retrieveProjectKnowledge` |
-| CSV | `csv.ts` | `SANDBOX_WORKSPACE_DIR/uploads/<id>.csv` | No (sandbox reads file directly when needed) |
-| Image, `kind=asset` | `image.ts` → `asset.ts` | `assets/` folder + `Asset` row in working memory | No |
-| Image, `kind=reference` | `image.ts` (reference path) | Conversation message for that turn only | Not applicable |
-| Font (`.ttf`, `.otf`, `.woff*`) | `asset.ts` | `assets/` folder + `Asset` row | No |
+| PDF / large doc | `pdf.ts` → `ingest-text.ts` | Knowledge Store (chunks) | On demand via `retrieveProjectKnowledge` |
+| Markdown / text | `text.ts` → `ingest-text.ts` | Knowledge Store (chunks) | On demand via `retrieveProjectKnowledge` |
+| CSV | `csv.ts` | `<workspace>/uploads/<id>.csv` | No (sandbox reads file directly when needed) |
+| Image, `kind=asset` | `image.ts` (asset branch) | `<workspace>/assets/` + `Asset` row in working memory | No |
+| Image, `kind=reference` | `image.ts` (reference branch) | Conversation message for that turn only | Not applicable |
+| Font (`.ttf`, `.otf`, `.woff*`), video, audio, archive | (rejected) | nothing | nothing — `415` returned |
 
 The repeated principle: **default to Workspace State or filesystem, fall back to retrieval only for facts inside large documents.** Retrieval is the exception, not the default. Implementor never retrieves; only Planner and Art Director do.
 

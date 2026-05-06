@@ -43,7 +43,7 @@ Architecture rules:
 
 - Tool names are **generic** (`read_file`, `exec_command`). No provider-specific names like `docker_exec` or `local_read`.
 - Don't import `sandbox/src/*` from `mastra/` or vice versa. The MCP tool surface is the entire contract.
-- The main app writes only to `SANDBOX_WORKSPACE_DIR/{assets,uploads}`. The sandbox owns `src/` and `out/`.
+- The main app writes only to `<sandboxRoot>/{assets,uploads}`. The sandbox owns `src/` and `out/`. The sandbox root is anchored at `<repo>/sandbox/.workspace` by default; both services resolve it the same way (file-anchored in `mastra/src/mastra/sandbox-root.ts` and `sandbox/src/index.ts`, with `WORKSPACE_PATH` as an optional override).
 
 Canonical tool surface and path-guard rules: [`local-sandbox-service-design.md`](local-sandbox-service-design.md#mcp-tool-surface).
 

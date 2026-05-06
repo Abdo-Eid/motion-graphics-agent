@@ -1,22 +1,11 @@
 ﻿import { mkdir, stat, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { env } from 'node:process';
+import { extname, join } from 'node:path';
 
-import type { IngestContext, IngestResult, UploadInput } from '../ingest';
+import { appendAsset } from '../../memory/access';
+import { sandboxRoot } from '../../sandbox-root';
+import type { IngestResult, UploadInput } from '../ingest';
 
-interface AssetRecord {
-  id: string;
-  path: string;
-  originalName: string;
-  mime: string;
-  bytes: number;
-  description: string;
-  createdAt: string;
-}
-
-const assets: AssetRecord[] = [];
-
-export async function handle(input: UploadInput, _ctx: IngestContext): Promise<IngestResult> {
+export async function handle(input: UploadInput): Promise<IngestResult> {
   if (input.kind === 'reference') {
     return {
       assetId: input.assetId,
@@ -29,27 +18,24 @@ export async function handle(input: UploadInput, _ctx: IngestContext): Promise<I
     throw new Error('Image uploads require kind=asset or kind=reference');
   }
 
-  const extension = extensionOf(input.originalName);
-  const relativePath = `assets/${input.assetId}${extension}`;
-  const absolutePath = workspacePath(relativePath);
+  const relativePath = `assets/${input.assetId}${extname(input.originalName).toLowerCase()}`;
+  const absolutePath = join(sandboxRoot, relativePath);
 
-  await mkdir(workspacePath('assets'), { recursive: true });
+  await mkdir(join(sandboxRoot, 'assets'), { recursive: true });
   await writeFile(absolutePath, Buffer.from(await input.file.arrayBuffer()));
 
   const fileStat = await stat(absolutePath);
-  const asset: AssetRecord = {
-    id: input.assetId,
-    path: relativePath,
-    originalName: input.originalName,
-    mime: input.mime,
-    bytes: fileStat.size,
-    description: '',
-    createdAt: new Date().toISOString(),
-  };
 
-  await addAsset(asset, {
-    threadId: input.projectId,
-    resourceId: input.projectId,
+  await appendAsset({
+    projectId: input.projectId,
+    asset: {
+      id: input.assetId,
+      path: relativePath,
+      originalName: input.originalName,
+      mime: input.mime,
+      bytes: fileStat.size,
+      description: '',
+    },
   });
 
   return {
@@ -57,22 +43,4 @@ export async function handle(input: UploadInput, _ctx: IngestContext): Promise<I
     ingestStatus: 'done',
     path: relativePath,
   };
-}
-
-async function addAsset(asset: AssetRecord, _ctx: { threadId: string; resourceId: string }): Promise<void> {
-  assets.push(asset);
-}
-
-function workspacePath(relativePath: string): string {
-  return join(env.SANDBOX_WORKSPACE_DIR ?? '../sandbox/.workspace', relativePath);
-}
-
-function extensionOf(filename: string): string {
-  const dotIndex = filename.lastIndexOf('.');
-
-  if (dotIndex === -1) {
-    return '';
-  }
-
-  return filename.slice(dotIndex).toLowerCase();
 }

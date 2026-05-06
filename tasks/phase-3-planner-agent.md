@@ -148,7 +148,7 @@ Notes:
 
 - Memory helpers are exposed as tools with the role pre-bound; the agent cannot pass a different role.
 - Auto-generated subagent tool names: `agent-<objectKey>` ([docs](https://mastra.ai/docs/agents/using-tools#agents-as-tools)). `ctx.primitiveId` is the subagent's own `id` (e.g. `'art-director-agent'`), not the tool name.
-- The hook does not parse the subagent's reply. Scene-level UI updates come from the filesystem (Phase 4 workspace read-through routes watching `SANDBOX_WORKSPACE_DIR/src/`) and from the `sceneNumber` already attached to `agent.start` / `agent.end` payloads when the Planner dispatches per-scene work.
+- The hook does not parse the subagent's reply. Scene-level UI updates come from the filesystem (Phase 4 workspace read-through routes watching `<workspace>/src/`) and from the `sceneNumber` already attached to `agent.start` / `agent.end` payloads when the Planner dispatches per-scene work.
 
 ## Instructions To Write
 
@@ -276,7 +276,7 @@ Where events come from:
 - `onDelegationComplete` emits `agent.end` (or `agent.error` on failure). It does not parse the subagent reply.
 - Access-layer throws emit `field-ownership-violation`.
 
-Scene-level UI state (which scene is building, which one just got new code) is reconstructed from `agent.start` / `agent.end` payloads plus filesystem watchers under `SANDBOX_WORKSPACE_DIR/src/` — not from parsing the Summary block.
+Scene-level UI state (which scene is building, which one just got new code) is reconstructed from `agent.start` / `agent.end` payloads plus filesystem watchers under `<workspace>/src/` — not from parsing the Summary block.
 
 ## Registration
 

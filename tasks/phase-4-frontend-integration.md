@@ -62,7 +62,7 @@ type AgentId = 'planner' | 'art-director' | 'implementor'
 - SSE route: `GET /events/:projectId` — opens a long-lived response, writes `data: {json}\n\n` per event, sends a heartbeat comment every 15 s.
 - The Planner's `delegation` hooks emit `agent.start` / `agent.end` / `agent.error` (with `sceneNumber` when the dispatch was per-scene).
 - Upload pipeline emits `upload.status` events.
-- Watcher emits `workspace.file` events under `SANDBOX_WORKSPACE_DIR/src/`.
+- Watcher emits `workspace.file` events under `<sandboxRoot>/src/` (the resolved `sandboxRoot`). The `workspace.file` event name is the bus event taxonomy name and is preserved as-is — see [Part A](#part-a--connection-and-event-taxonomy) for the canonical taxonomy.
 - The frontend reconstructs per-scene status from the `agent.start` / `agent.end` payloads (which carry `sceneNumber`) plus filesystem signals — there is no dedicated `scene.update` event.
 - Health pings emit `service.health` for `mastra` and `sandbox` (the sandbox health is observed by the MCP client; success = `ok: true`).
 
@@ -87,7 +87,7 @@ GET /workspace/files?path=<rel>      -> [{ name, kind: 'file' | 'dir' }]
 GET /workspace/file?path=<rel>       -> { content: string, mime: string }
 ```
 
-Both resolve through the same path-guard the sandbox service uses — no escapes outside `SANDBOX_WORKSPACE_DIR`. The Mastra server reads the workspace directly (it shares the path via `SANDBOX_WORKSPACE_DIR` env from the memory/uploads task).
+Both resolve through the same path-guard the sandbox service uses — no escapes outside the sandbox root. The Mastra server reads the sandbox root directly via `mastra/src/mastra/sandbox-root.ts` (file-anchored to `<repo>/sandbox/.workspace` by default; `WORKSPACE_PATH` overrides). Both services compute the same path. (This is the sandbox filesystem root, not `@mastra/core/workspace`.)
 
 ### Frontend
 
@@ -107,13 +107,26 @@ If the workspace is empty (first session, before Implementor has written anythin
 
 ## Part D — Upload UI
 
+### Frontend
+
 - Drag-and-drop zone integrated into the chat panel (drop anywhere over the chat area).
 - Also: an explicit "+ Upload" button next to the chat input.
 - Submits multipart `POST /uploads` to the route built in `phase-3-knowledge-and-uploads.md`.
 - Per-upload row in chat thread shows ingest status pulled from `upload.status` events: `pending` → `done` / `errored`. PDFs may take longer (chunk + embed); the row stays `pending` until the handler emits `done`.
 - On `done`, show a one-line confirmation (file name + how it was handled — "added as asset", "indexed for retrieval", "saved to uploads") so the user has feedback the system understood the file.
 
-Accept: PDF, MD, TXT, CSV, PNG, JPG, SVG, TTF, OTF, WOFF, WOFF2. Reject anything else with a clear message.
+Accept: PDF, MD, TXT, CSV, and `image/*` (PNG, JPG, SVG, etc.). Reject anything else (including fonts, video, audio, archives) with a clear message — must match the `415` set the T1B router already enforces, otherwise the UI accepts files the server then rejects.
+
+### Server-side changes needed (deferred from T1B)
+
+T1B shipped `POST /uploads` as **synchronous** — the response only returns once ingest is finished. Phase 4's UI requirement ("show ingestion progress, not just upload progress" — see Constraints below) requires the route to return early and let the SSE stream carry the rest. Make these edits when wiring part D:
+
+- `mastra/src/mastra/uploads/router.ts` — change the response to `{ assetId, ingestStatus: 'pending' }` and dispatch ingest as a background task (`queueMicrotask` / detached `Promise`). Errors thrown after the response must surface as a final `upload.status` event with `status: 'errored'`, not as an unhandled rejection.
+- `mastra/src/mastra/uploads/ingest.ts` — emit `bus.emit('upload.status', { assetId, status: 'pending', ... })` on entry and `'done'` / `'errored'` on terminal state. Bus is the one created in part A of this phase.
+- Optional intermediate events (`parsed`, `embedded`) can be added inside the per-type handlers and `knowledge/ingest-text.ts` if they're cheap to emit; the UI treats anything other than `done`/`errored` as "still working" so the schema doesn't need to grow.
+- Update T1B's checkpoint 1 expectation: the POST response is `ingestStatus: 'pending'`, terminal state arrives over SSE.
+
+This is the only T1B code change required for part D. Everything else (handler logic, accepted MIME set, asset shape, `appendAsset`) stays untouched.
 
 ## Part E — Connection Status
 
@@ -132,10 +145,7 @@ VITE_MASTRA_URL=http://localhost:4111
 VITE_EVENTS_PATH=/events
 ```
 
-```env
-# mastra/.env (already set in earlier tasks)
-SANDBOX_WORKSPACE_DIR=../sandbox/.workspace
-```
+No new env vars. The watcher and read-through routes import `sandboxRoot` from `mastra/src/mastra/sandbox-root.ts`, which already resolves the sandbox root dir from `WORKSPACE_PATH` (optional override) or the file-anchored default.
 
 ## Files To Create / Modify
 

@@ -63,11 +63,11 @@ For per-input-type ingest mechanics (PDF chunking, CSV file copy, image `kind` d
 
 ## Filesystem Layout
 
-The main app and the sandbox share `SANDBOX_WORKSPACE_DIR`. Ownership is split:
+The main app and the sandbox share one workspace folder. Ownership is split:
 
 ```text
-$SANDBOX_WORKSPACE_DIR/
-  assets/      <- main app writes (image/font asset uploads)
+<workspace>/
+  assets/      <- main app writes (image asset uploads only)
   uploads/     <- main app writes (CSV uploads)
   src/         <- sandbox writes (Implementor-generated Remotion code)
   out/         <- sandbox writes (rendered video, build artifacts)
@@ -78,9 +78,9 @@ Rules:
 - The main app **only writes** to `assets/` and `uploads/`. Never into `src/` or `out/`.
 - The sandbox **never writes** to `assets/` or `uploads/`. Treats them as read-only inputs.
 - Raw uploads are inputs, not working files; the Implementor copies or transforms before mutating.
-- The Knowledge Store (chunks + embeddings) lives in the LibSQL DB at `LIBSQL_URL`, not on disk under the workspace.
+- The Knowledge Store (chunks + embeddings) lives in the LibSQL DB at `mastra/mastra.db`, not on disk under the workspace.
 
-Concrete paths come from env: `SANDBOX_WORKSPACE_DIR` and `LIBSQL_URL` (see [`../tasks/phase-3-knowledge-and-uploads.md`](../tasks/phase-3-knowledge-and-uploads.md) and [`../tasks/phase-3-memory-and-state.md`](../tasks/phase-3-memory-and-state.md)).
+The sandbox-root path is resolved file-anchored: each service computes `WORKSPACE_PATH ?? <repo>/sandbox/.workspace` from `import.meta.url`, so it works the same under `bun run`, `mastra dev`, and `mastra start` without a CWD assumption. See `mastra/src/mastra/sandbox-root.ts` and `sandbox/src/index.ts`. The LibSQL URL is hardcoded as `file:./mastra.db` in both `mastra/src/mastra/memory/index.ts` and `mastra/src/mastra/knowledge/store.ts`. Neither requires an env var.
 
 ---
 

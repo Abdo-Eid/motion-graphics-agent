@@ -109,9 +109,12 @@ AZURE_API_VERSION=preview
 AZURE_CHAT_DEPLOYMENT=<chat-deployment-name>
 AZURE_EMBEDDING_DEPLOYMENT=<embedding-deployment-name>
 SANDBOX_MCP_URL=http://localhost:4311/mcp
-SANDBOX_WORKSPACE_DIR=./sandbox/.workspace
-LIBSQL_URL=file:./mastra/data/motion-graphics-agent.db
+SANDBOX_HTTP_PORT=4311
+# Optional. Defaults to <repo>/sandbox/.workspace.
+# WORKSPACE_PATH=C:\absolute\path\to\workspace
 ```
+
+The LibSQL DB path is **not** an env var — both Memory and the Knowledge Store pin `file:./mastra.db` (resolves to `mastra/mastra.db`).
 
 ### Development
 

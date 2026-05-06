@@ -5,7 +5,7 @@ T1 is the data spine the three agents read and write through. It splits cleanly 
 ## Tracks
 
 - **[T1A — Memory & Workspace State](phase-3-memory-and-state.md)** — Mastra `Memory` (working memory + Observational Memory), the `WorkspaceState` zod schema, and the role-guarded setter tools (`setBrief`, `setStyleContext`, `setSceneDesign`, `addAsset`). Owns `mastra/src/mastra/memory/`.
-- **[T1B — Knowledge Store & Uploads](phase-3-knowledge-and-uploads.md)** — `LibSQLVector` knowledge index, embedding pipeline, `retrieveProjectKnowledge` tool, and the `POST /uploads` + status SSE routes with per-type handlers. Owns `mastra/src/mastra/knowledge/` and `mastra/src/mastra/uploads/`.
+- **[T1B — Knowledge Store & Uploads](phase-3-knowledge-and-uploads.md)** — `LibSQLVector` knowledge index, embedding pipeline, `retrieveProjectKnowledge` tool, and the synchronous `POST /uploads` route with per-type handlers. Owns `mastra/src/mastra/knowledge/` and `mastra/src/mastra/uploads/`.
 
 Each track has its own scope, files, env vars, and checkpoints. Read the track file for implementation detail.
 
@@ -21,13 +21,13 @@ Each track has its own scope, files, env vars, and checkpoints. Read the track f
 1. **`Asset` zod schema.** Defined in T1A's `memory/schema.ts`, consumed by T1B's upload handlers. Lock the exact shape together before either side codes against it.
 2. **`addAsset` tool.** T1A exports it; T1B's handlers call it. T1B can stub locally during parallel work and swap to the real import at merge.
 3. **`projectId` propagation.** Used as both `threadId` and `resourceId` for memory writes, and as the partition key for the Knowledge Store. Multipart `POST /uploads` provides it; both tracks must use the same value end to end.
-4. **`LIBSQL_URL`.** One DB file at `mastra/data/motion-graphics-agent.db`. Track A creates `LibSQLStore` against it; Track B creates a separate `LibSQLVector` against the same URL. No contention, but agree on the env var name.
-5. **`mastra/src/mastra/index.ts` wiring.** The final `new Mastra({ storage, agents, apiRoutes, tools })` call combines outputs from both tracks. Assign one owner for the merge step.
+4. **Single DB file at `mastra/mastra.db`.** Track A creates `LibSQLStore({ url: "file:./mastra.db" })`; Track B creates a separate `LibSQLVector` with the same URL string. No env var, no coordination — both sides pin the same literal. (Earlier drafts called for a `LIBSQL_URL` env var; that was simplified out during T1A delivery.)
+5. **`mastra/src/mastra/index.ts` wiring.** The final `new Mastra({ storage, agents, server: { apiRoutes }, memory })` call combines outputs from both tracks. Assign one owner for the merge step.
 
 ## Suggested Split
 
 - **Person on T1A** — comfortable with Mastra internals (working memory schema mode, scopes, readOnly semantics, Observational Memory triggers). Smaller LOC, higher "did you read the docs right" weight.
-- **Person on T1B** — comfortable with file I/O, multipart parsing, streaming/SSE, embeddings. Larger LOC, more moving parts.
+- **Person on T1B** — comfortable with file I/O, multipart parsing, embeddings, and Mastra `apiRoutes`. Larger LOC, more moving parts.
 
 ## Solo Path
 

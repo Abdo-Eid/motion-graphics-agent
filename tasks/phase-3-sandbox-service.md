@@ -48,7 +48,9 @@ sandbox/
 ```env
 # sandbox/.env
 SANDBOX_HTTP_PORT=4311
-SANDBOX_WORKSPACE_DIR=./.workspace
+# Optional override. Defaults to <repo>/sandbox/.workspace via file-anchored
+# resolve in sandbox/src/index.ts (so it works under any CWD).
+# WORKSPACE_PATH=C:\absolute\path\to\workspace
 SANDBOX_COMMAND_TIMEOUT_MS=60000
 SANDBOX_ALLOW_NETWORK=false
 ```
@@ -63,8 +65,8 @@ SANDBOX_MCP_URL=http://localhost:4311/mcp
 1. **Scaffold the package.** `sandbox/package.json` with `@mastra/core` (already installed at the repo root via Bun workspaces) and `zod`. Add scripts: `dev` (`bun --watch src/index.ts`) and `start` (`bun src/index.ts`).
 2. **Add `sandbox/.gitignore`** with `.workspace/` and `.env`.
 3. **Boot Mastra's `MCPServer` over HTTP** in `src/index.ts`, listening on `SANDBOX_HTTP_PORT`. Register every tool in `src/tools/`.
-4. **Implement `path-guard.ts`.** Resolves any input path against `SANDBOX_WORKSPACE_DIR`, rejects paths that escape the root. Used by every filesystem tool.
-5. **Implement `exec.ts`.** Wraps `node:child_process` with `cwd = SANDBOX_WORKSPACE_DIR`, hard timeout, captured stdout/stderr/exit code.
+4. **Implement `path-guard.ts`.** Resolves any input path against the workspace root (the resolved `WORKSPACE_PATH ?? <repo>/sandbox/.workspace`), rejects paths that escape the root. Used by every filesystem tool.
+5. **Implement `exec.ts`.** Wraps `node:child_process` with `cwd = workspace root`, hard timeout, captured stdout/stderr/exit code.
 6. **Implement `local-provider.ts`** against the `SandboxProvider` interface in the design doc.
 7. **Implement filesystem tools** (`read-file`, `write-file`, `edit-file`, `list-files`, `grep`) as Mastra tools that call the provider.
 8. **Implement command tools** (`exec-command`, `run-typecheck`).

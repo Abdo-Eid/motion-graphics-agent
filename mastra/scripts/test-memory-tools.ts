@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
     addAsset,
     setBrief,
@@ -7,8 +9,21 @@ import {
 import { memory } from "../src/mastra/memory/index.ts";
 import { WorkspaceStateSchema } from "../src/mastra/memory/schema.ts";
 
-const projectId = process.argv[2] ?? `t1a-delivery-${Date.now()}`;
-const toolContext = {} as Parameters<NonNullable<typeof setBrief.execute>>[1];
+const projectId = process.argv[2] ?? randomUUID();
+
+// Simulate Mastra's invocation context. By T1A convention:
+//   threadId === resourceId === projectId
+//   agentId  === the calling agent's id (Mastra populates this from
+//                `agent.id` at tool-call time — see
+//                docs/working-memory-dilemma.md)
+function ctx(agentId: string) {
+    return {
+        agent: { agentId, threadId: projectId, resourceId: projectId },
+    } as Parameters<NonNullable<typeof setBrief.execute>>[1];
+}
+
+const allowedCtx = ctx("t1-test-agent");
+const forbiddenCtx = ctx("implementor");
 
 function assert(condition: unknown, message: string): asserts condition {
     if (!condition) {
@@ -18,25 +33,26 @@ function assert(condition: unknown, message: string): asserts condition {
 
 async function runTool<TInput, TOutput>(
     label: string,
-    execute: ((input: TInput, context: typeof toolContext) => Promise<TOutput>) | undefined,
+    execute: ((input: TInput, context: ReturnType<typeof ctx>) => Promise<TOutput>) | undefined,
     input: TInput,
+    context: ReturnType<typeof ctx> = allowedCtx,
 ) {
     assert(execute, `FAIL ${label}: execute handler is missing`);
-    return execute(input, toolContext);
+    return execute(input, context);
 }
 
-async function expectRoleFailure(label: string, run: () => Promise<unknown>) {
+async function expectFailure(label: string, run: () => Promise<unknown>) {
     try {
         await run();
-    } catch (error) {
-        console.log(`PASS ${label}: rejected wrong role`);
+    } catch {
+        console.log(`PASS ${label}: rejected forbidden caller`);
         return;
     }
 
-    throw new Error(`FAIL ${label}: wrong-role call unexpectedly succeeded`);
+    throw new Error(`FAIL ${label}: forbidden caller unexpectedly succeeded`);
 }
 
-async function expectRoleFailureWithoutMutation(
+async function expectFailureWithoutMutation(
     label: string,
     run: () => Promise<unknown>,
     threadId: string,
@@ -46,20 +62,18 @@ async function expectRoleFailureWithoutMutation(
         resourceId: threadId,
     });
 
-    await expectRoleFailure(label, run);
+    await expectFailure(label, run);
 
     const after = await memory.getWorkingMemory({
         threadId,
         resourceId: threadId,
     });
 
-    assert(before === after, `FAIL ${label}: wrong-role call mutated working memory`);
+    assert(before === after, `FAIL ${label}: forbidden call mutated working memory`);
     console.log(`PASS ${label}: working memory unchanged`);
 }
 
 await runTool("setBrief", setBrief.execute, {
-    projectId,
-    role: "planner",
     brief: {
         goal: "Create a 30 second product teaser",
         audience: "Startup founders",
@@ -73,25 +87,26 @@ await runTool("setBrief", setBrief.execute, {
     },
 });
 
-await expectRoleFailureWithoutMutation("setBrief", () =>
-    runTool("setBrief wrong-role", setBrief.execute, {
-        projectId,
-        role: "implementor",
-        brief: {
-            goal: "bad write",
-            audience: "bad",
-            tone: "bad",
-            duration: 1,
-            assets: [],
-            keyMessages: ["bad"],
+await expectFailureWithoutMutation("setBrief", () =>
+    runTool(
+        "setBrief forbidden-caller",
+        setBrief.execute,
+        {
+            brief: {
+                goal: "bad write",
+                audience: "bad",
+                tone: "bad",
+                duration: 1,
+                assets: [],
+                keyMessages: ["bad"],
+            },
         },
-    }),
+        forbiddenCtx,
+    ),
     projectId,
 );
 
 await runTool("setStyleContext", setStyleContext.execute, {
-    projectId,
-    role: "artDirector",
     styleContext: {
         palette: ["#111111", "#ffffff"],
         fonts: ["Inter"],
@@ -101,24 +116,25 @@ await runTool("setStyleContext", setStyleContext.execute, {
     },
 });
 
-await expectRoleFailureWithoutMutation("setStyleContext", () =>
-    runTool("setStyleContext wrong-role", setStyleContext.execute, {
-        projectId,
-        role: "planner",
-        styleContext: {
-            palette: ["#000000"],
-            fonts: ["Bad"],
-            mood: "bad",
-            animationFeel: "bad",
-            transitions: "bad",
+await expectFailureWithoutMutation("setStyleContext", () =>
+    runTool(
+        "setStyleContext forbidden-caller",
+        setStyleContext.execute,
+        {
+            styleContext: {
+                palette: ["#000000"],
+                fonts: ["Bad"],
+                mood: "bad",
+                animationFeel: "bad",
+                transitions: "bad",
+            },
         },
-    }),
+        forbiddenCtx,
+    ),
     projectId,
 );
 
 await runTool("setSceneDesign", setSceneDesign.execute, {
-    projectId,
-    role: "artDirector",
     sceneNumber: 1,
     name: "Opening scene",
     design: {
@@ -129,19 +145,24 @@ await runTool("setSceneDesign", setSceneDesign.execute, {
     },
 });
 
-await expectRoleFailureWithoutMutation("setSceneDesign", () =>
-    runTool("setSceneDesign wrong-role", setSceneDesign.execute, {
-        projectId,
-        role: "planner",
-        sceneNumber: 2,
-        name: "Bad scene",
-        design: {
-            bad: true,
+await expectFailureWithoutMutation("setSceneDesign", () =>
+    runTool(
+        "setSceneDesign forbidden-caller",
+        setSceneDesign.execute,
+        {
+            sceneNumber: 2,
+            name: "Bad scene",
+            design: {
+                bad: true,
+            },
         },
-    }),
+        forbiddenCtx,
+    ),
     projectId,
 );
 
+// addAsset is system-only, never attached to an agent — keeps the explicit
+// role/projectId inputs and is invoked without an agent context.
 await runTool("addAsset", addAsset.execute, {
     projectId,
     role: "system",
@@ -154,22 +175,6 @@ await runTool("addAsset", addAsset.execute, {
         description: "",
     },
 });
-
-await expectRoleFailureWithoutMutation("addAsset", () =>
-    runTool("addAsset wrong-role", addAsset.execute, {
-        projectId,
-        role: "planner",
-        asset: {
-            id: "asset-test-2",
-            path: "assets/asset-test-2.png",
-            originalName: "bad.png",
-            mime: "image/png",
-            bytes: 1,
-            description: "",
-        },
-    }),
-    projectId,
-);
 
 const rawWorkingMemory = await memory.getWorkingMemory({
     threadId: projectId,

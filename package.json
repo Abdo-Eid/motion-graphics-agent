@@ -10,9 +10,9 @@
     ],
     "scripts": {
         "dev": "bun run dev:sandbox & bun run dev:mastra & bun run dev:web",
-        "dev:web": "cd web && bun run dev",
-        "dev:mastra": "cd mastra && bun run dev",
-        "dev:sandbox": "cd sandbox && bun run dev"
+        "dev:web": "cd web && bun --env-file=../.env run dev",
+        "dev:mastra": "cd mastra && bun --env-file=../.env run dev",
+        "dev:sandbox": "cd sandbox && bun --env-file=../.env run dev"
     },
     "devDependencies": {
         "@types/bun": "latest"

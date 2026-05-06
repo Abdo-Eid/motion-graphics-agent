@@ -31,11 +31,15 @@ export const AssetSchema = z.object({
     mime: z.string(),
     bytes: z.number().int().nonnegative(),
     description: z.string().default(""),
-    createdAt: z.string().datetime(),
+    createdAt: z.string().describe("ISO 8601 timestamp"),
 });
 
+// projectId is intentionally NOT a field here. The Mastra row's threadId IS
+// the projectId by T1A convention; storing it again inside the JSON blob just
+// invites an agent (or Mastra's auto `updateWorkingMemory` tool) to overwrite
+// it with a hallucinated string like "current". Read project id from
+// `context.agent.threadId` everywhere.
 export const WorkspaceStateSchema = z.object({
-    projectId: z.string(),
     brief: BriefSchema.optional(),
     styleContext: StyleContextSchema.optional(),
     sceneRegistry: z.array(SceneRecordSchema).default([]),

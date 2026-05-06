@@ -1,6 +1,6 @@
 # Phase 3 — T1A — Memory & Workspace State
 
-> **Status: Complete.** Backend layer implemented and verified. Long-form delivery record: [`phase-3-memory-and-state-delivery-notes.md`](phase-3-memory-and-state-delivery-notes.md).
+> **Status: Complete.** Backend layer implemented and verified.
 
 Track A of T1. Pairs with [`phase-3-knowledge-and-uploads.md`](phase-3-knowledge-and-uploads.md) (Track B). Both tracks share the spec overview in [`phase-3-memory-knowledge-uploads.md`](phase-3-memory-knowledge-uploads.md).
 
@@ -71,8 +71,8 @@ export const SceneRecord = z.object({
 // by the upload pipeline but do NOT produce Asset rows — they go to the
 // Knowledge Store (pdf/txt/md) or the uploads/ folder (csv).
 export const Asset = z.object({
-    id: z.string(), // nanoid(21); stable; referenced by Brief.assets[]
-    path: z.string(), // relative to SANDBOX_WORKSPACE_DIR, e.g. "assets/<id>.png"
+    id: z.string(), // UUID (node:crypto randomUUID); stable; referenced by Brief.assets[]
+    path: z.string(), // relative to sandboxRoot, e.g. "assets/<id>.png"
     originalName: z.string(), // user's filename at upload time (display only)
     mime: z.string(), // detected mime, always "image/*" in MVP
     bytes: z.number().int().nonnegative(),
@@ -81,7 +81,6 @@ export const Asset = z.object({
 });
 
 export const WorkspaceState = z.object({
-    projectId: z.string(),
     brief: Brief.optional(),
     styleContext: StyleContext.optional(),
     sceneRegistry: z.array(SceneRecord).default([]),
@@ -89,7 +88,7 @@ export const WorkspaceState = z.object({
 });
 ```
 
-`projectId` doubles as `threadId` (and `resourceId`) when invoking agents. Mastra working memory schema mode is documented as merge-semantics, but in our installed version direct partial writes via `memory.updateWorkingMemory(...)` did **not** preserve untouched object fields reliably — see [Delivery Summary](#delivery-summary). All setters in `access.ts` therefore do explicit read-modify-write.
+`projectId` is intentionally **not** a field in `WorkspaceState`. The Mastra row's `threadId` is the project id by T1A convention (`threadId === projectId === resourceId`); duplicating it inside the JSON blob invited the LLM to overwrite it with a hallucinated string (`"current"`) the first time it called Mastra's auto `updateWorkingMemory` tool. Read project id from `context.agent.threadId` everywhere. Mastra working memory schema mode is documented as merge-semantics, but in our installed version direct partial writes via `memory.updateWorkingMemory(...)` did **not** preserve untouched object fields reliably — see [Delivery Summary](#delivery-summary). All setters in `access.ts` therefore do explicit read-modify-write.
 
 > **Locked with Track B.** The `Asset` shape above is the agreed contract. Only images produce `Asset` rows in the MVP. References (image attachments the Planner classifies as inspiration, not project assets) attach to the conversation message and skip `addAsset`. Docs (pdf/csv/txt/md) never produce `Asset` rows. Either track can widen scope only by changing both task files together.
 
@@ -97,8 +96,8 @@ export const WorkspaceState = z.object({
 
 Mastra working memory has one access mode per call (read-write or `readOnly: true`); it has no per-field ACL. We get ownership by:
 
-1. Configuring every agent with `memory: { ..., options: { workingMemory: { readOnly: true }}}` so no agent can call the built-in `updateWorkingMemory` tool.
-2. Exposing **only** the role-correct setter tools to each agent. Each setter validates the role at the call site, reads current WM, applies the partial update, and calls `memory.updateWorkingMemory()`.
+1. Suppressing Mastra's auto `updateWorkingMemory` tool. The current source-verified flag is **`memory.options.readOnly: true` at the top level of the agent's memory config** (see `@mastra/memory` v1.15 `index.js:17927` — the tool is registered only when `workingMemory.enabled && !readOnly`). Important side effect: `readOnly: true` also stops Mastra from persisting new chat messages, so it is unsuitable for production agents that need conversation history. Today the T1 test agent does **not** set this flag and instead relies on a **soft instruction guard** ("never call `updateWorkingMemory` directly"); this is an open issue.
+2. Exposing **only** the role-correct setter tools to each agent. Each setter validates the role at the call site, reads current WM, applies the partial update, and calls `memory.updateWorkingMemory()` directly (server-side, bypassing the auto-tool).
 
 | Field                     | Owner                   | Tool exposed to that agent                                             |
 | ------------------------- | ----------------------- | ---------------------------------------------------------------------- |
@@ -124,16 +123,11 @@ There is **no** `summarizer.ts` and **no** `readContext()` helper. Agents read c
 
 - `memory/index.ts` exports `memory` and `storage`. `memory/access.ts` exports the four role-guarded tools. T2/T3/T4 import these. Track B imports `addAsset` from `access.ts`.
 - Each agent (T2/T3/T4) gets the shared `Memory` instance with `workingMemory.readOnly: true` and **only** the setter tools that match its role attached.
-- Root `Mastra({ ... })` keeps the named registry `memory: { workspace: memory }` so `mastra.getMemory("workspace")` and Studio's Memory tab work. Tools live on agents — there is no global `tools: { ... }` block on `Mastra`.
+- Root `Mastra({ ... })` keeps the named registry `memory: { workspace: memory }` so `mastra.getMemory("workspace")` and Studio's Memory tab work. The key `workspace` is a Mastra memory registry identifier — **not** `@mastra/core/workspace` (see "Terminology" in `PROJECT_OVERVIEW.md`). Tools live on agents — there is no global `tools: { ... }` block on `Mastra`.
 
 ## Configuration
 
-```env
-# mastra/.env (Track A's vars)
-LIBSQL_URL=file:/absolute/path/to/data/motion-graphics-agent.db
-```
-
-The same `LIBSQL_URL` is reused by Track B for its vector index. **Use an absolute `file:` path.** Relative paths did not resolve consistently under `mastra dev`'s bundler (observed: `Unable to open connection to local database`).
+Track A's storage path is **not** an env var. `memory/index.ts` constructs `LibSQLStore` with `url: "file:./mastra.db"` directly; Track B's `LibSQLVector` uses the same string. The DB lands at `mastra/mastra.db` (resolved relative to the Mastra working directory). Earlier drafts of this spec named a `LIBSQL_URL` env var that required an absolute path because relative paths did not resolve consistently under `mastra dev`'s bundler — pinning the literal `file:./mastra.db` works under both `bun run` and `mastra dev` and removes the env-var coordination point.
 
 ## Checkpoints
 
@@ -147,7 +141,7 @@ bun --filter mastra dev               # opens Studio for manual spot checks
 
 1. **Memory roundtrip — PASS.** `test-memory-tools.ts` calls `setBrief` (planner), `setStyleContext` (artDirector), `setSceneDesign` (artDirector), `addAsset` (system) against `threadId='proj-1'`, then reads WM back and asserts the full `WorkspaceState` shape (`projectId`, `brief`, `styleContext`, `sceneRegistry`, `assets`).
 2. **Role rejection — PASS.** Same script calls each setter with a wrong role; each throws synchronously and WM is asserted unchanged.
-3. **Persistence — PASS.** Stop dev server, restart, reopen `proj-1` → prior messages and the working-memory `brief` are still there. The DB file exists on disk at the configured `LIBSQL_URL`.
+3. **Persistence — PASS.** Stop dev server, restart, reopen `proj-1` → prior messages and the working-memory `brief` are still there. The DB file exists on disk at `mastra/mastra.db`.
 4. **Conversation compression — configured, runtime-confirmation pending.** Observational Memory is enabled in `memory/index.ts` with the shared model and thread scope; visibly proving the threshold trigger requires Studio-driven traffic past ~30k message tokens.
 
 Acceptance = (1)–(3) pass _and_ the constraints below hold (Implementor has zero setter tools, every agent that lands in T2/T3/T4 declares `workingMemory.readOnly: true`).
@@ -205,7 +199,7 @@ Verification scaffolding (delete when T2 lands and ships the real Planner / Art 
 
 Bugs hit during verification and how they were resolved:
 
-1. **LibSQL relative path under `mastra dev`** → use absolute `file:` path in `mastra/.env`.
+1. **LibSQL relative path under `mastra dev`** → first attempt used `LIBSQL_URL` from env with an absolute `file:` path; later simplified to a hardcoded `file:./mastra.db` literal in both `memory/index.ts` and `knowledge/store.ts`, which works under both `bun run` and `mastra dev` without an env var.
 2. **Studio Working Memory panel unreliable** (template view leaked over live state) → moved acceptance proof to `scripts/test-memory-tools.ts`; Studio is now spot-check only.
 3. **Direct partial WM writes did not merge** in this version's direct-API path — a later `setStyleContext` could clobber an earlier `brief`. Fix: explicit read-modify-write in every setter before `memory.updateWorkingMemory(...)`.
 4. **`projectId` dropped on partial writes** (schema-required, not preserved by partial-write attempt). Fix covered by (3): build the full next state before writing.
@@ -214,7 +208,6 @@ Architectural caveat carried forward: `memoryTestAgent` exposes more setter tool
 
 ## Reference
 
-- [`phase-3-memory-and-state-delivery-notes.md`](phase-3-memory-and-state-delivery-notes.md) — long-form delivery record (chronology, root-cause analysis, evidence)
 - [`phase-3-memory-knowledge-uploads.md`](phase-3-memory-knowledge-uploads.md) — overall T1 overview
 - [`phase-3-knowledge-and-uploads.md`](phase-3-knowledge-and-uploads.md) — Track B (consumes `addAsset` and `Asset` schema from here)
 - [`phase-3-planner-agent.md`](phase-3-planner-agent.md) — supervisor wiring + `delegation` hooks that invoke subagents using these helpers

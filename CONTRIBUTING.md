@@ -12,6 +12,7 @@ This document is the **work board**: every task, what it depends on, whether you
 - Run everything: `bun run dev`. Run one: `bun run dev:web` / `dev:mastra` / `dev:sandbox`
 - Spec for every task lives in `tasks/phase-*.md`. **Read the spec before writing code.**
 - Architecture rules that aren't negotiable: see `AGENTS.md` → "Architecture Constraints".
+- "Workspace" is overloaded in this repo (Workspace State, `sandboxRoot`, Bun workspaces, and Mastra Workspace are four different things). See `PROJECT_OVERVIEW.md` → "Terminology" before editing anything that mentions workspace.
 
 ---
 
@@ -64,7 +65,7 @@ For the canonical phase walkthrough (what each phase builds, the checkpoint that
         │   + skills v1    │         │   (Bun process)  │  build in parallel
         └──────────────────┘         └──────────────────┘
                                               ▲
-                                              │ shares SANDBOX_WORKSPACE_DIR
+                                              │ shares the workspace dir
                                               │
                                      (T1 writes assets/ here)
 ```
@@ -105,16 +106,16 @@ T1 splits into two parallelizable tracks. Overview lives in `tasks/phase-3-memor
 #### T1B — Knowledge Store & Uploads
 
 - **Spec**: `tasks/phase-3-knowledge-and-uploads.md`
-- **What**: Project Knowledge Store (`LibSQLVector` + chunker + embeddings + `retrieveProjectKnowledge` tool); upload pipeline (`POST /uploads` + per-type handlers registered as Mastra `apiRoutes`).
-- **Start now?** Yes — runs in parallel with T1A. Stub `addAsset` locally until T1A lands; swap to the real import at merge.
-- **Files** (all new): `mastra/src/mastra/knowledge/{store,embeddings,chunker,retrieve}.ts`, `mastra/src/mastra/uploads/{router,ingest}.ts`, `mastra/src/mastra/uploads/handlers/{pdf,text,csv,image}.ts`. Adds `pdf-parse` and `ai` to `mastra/package.json`; embeddings use Track A's shared `embeddingModel()` from `mastra/src/mastra/model.ts`.
-- **Begin**: lock the `Asset` zod shape with T1A first, then build `knowledge/embeddings.ts` + `chunker.ts` + `store.ts` against a small fixture, then the upload router with handlers in order text/pdf → csv → image.
+- **What**: Project Knowledge Store (`LibSQLVector` + `MDocument` chunker via `@mastra/rag` + `embedMany` embeddings + `retrieveProjectKnowledge` tool); upload pipeline (`POST /uploads` + per-type handlers registered as Mastra `apiRoutes`).
+- **Start now?** Yes — runs in parallel with T1A. Both tracks now landed.
+- **Files** (all new): `mastra/src/mastra/knowledge/{store,ingest-text,retrieve}.ts`, `mastra/src/mastra/uploads/{router,ingest}.ts`, `mastra/src/mastra/uploads/handlers/{pdf,text,csv,image}.ts`, `mastra/src/mastra/sandbox-root.ts`. Adds `@mastra/rag`, `pdf-parse`, and `ai` to `mastra/package.json`; embeddings use Track A's shared `embeddingModel()` from `mastra/src/mastra/model.ts`.
+- **Begin**: lock the `Asset` zod shape with T1A first, then build `knowledge/store.ts` + `ingest-text.ts` against a small fixture (no hand-rolled chunker — use `MDocument.chunk()`), then the upload router with handlers in order text/pdf → csv → image. Image handler imports `appendAsset` (the role-skip impl) from `memory/access.ts`, not the `addAsset` tool.
 - **Checkpoint**: PDF upload → chunks in Knowledge Store, image asset → `Asset` row + file copy, CSV → file copy.
-- **Docs**: <https://ai-sdk.dev/docs/ai-sdk-core/embeddings>, <https://docs.turso.tech/sdk/ts/quickstart>, <https://mastra.ai/docs/server-db/custom-api-routes>.
+- **Docs**: <https://ai-sdk.dev/docs/ai-sdk-core/embeddings>, <https://docs.turso.tech/sdk/ts/quickstart>, <https://mastra.ai/docs/server-db/custom-api-routes>, <https://mastra.ai/docs/rag/chunking-and-embedding>.
 
 #### Merge step (one of the two owners)
 
-Wire both outputs into `mastra/src/mastra/index.ts`: `new Mastra({ storage, agents: {}, apiRoutes: [...uploadRoutes], tools: { setBrief, setStyleContext, setSceneDesign, addAsset, retrieveProjectKnowledge } })`.
+Wire both outputs into `mastra/src/mastra/index.ts`: `new Mastra({ storage, agents: { ... }, memory: { workspace: memory }, server: { apiRoutes: uploadRoutes } })`. Tools live on agents, not on the root `Mastra`. The `workspace` key in the `memory` registry is just a Mastra identifier — not `@mastra/core/workspace`.
 
 ### T2 — Planner Agent (Supervisor) + Subagent Delegation
 
@@ -150,7 +151,7 @@ Wire both outputs into `mastra/src/mastra/index.ts`: `new Mastra({ storage, agen
 ### T6 — Sandbox Service
 
 - **Spec**: `tasks/phase-3-sandbox-service.md` · **Design**: `docs/local-sandbox-service-design.md`
-- **What**: Standalone Bun process at port 4311 exposing Mastra `MCPServer` over HTTP. Implements `read_file`, `write_file`, `edit_file`, `list_files`, `grep`, `exec_command`, `exec_background`, `check_background`, `kill_background`, `run_typecheck`, `list_skills`, `load_skill`. All paths sandboxed under `SANDBOX_WORKSPACE_DIR` via a path guard.
+- **What**: Standalone Bun process at port 4311 exposing Mastra `MCPServer` over HTTP. Implements `read_file`, `write_file`, `edit_file`, `list_files`, `grep`, `exec_command`, `exec_background`, `check_background`, `kill_background`, `run_typecheck`, `list_skills`, `load_skill`. All paths sandboxed under the resolved workspace dir (`WORKSPACE_PATH` env or the file-anchored default) via a path guard.
 - **Start now?** Yes — fully independent. Doesn't import from `mastra/`.
 - **Files** (all new under `sandbox/`): `src/index.ts`, `src/server.ts`, `src/provider/{local-provider,path-guard,exec,background}.ts`, `src/tools/{read-file,write-file,edit-file,list-files,grep,exec-command,exec-background,check-background,kill-background,run-typecheck,list-skills,load-skill}.ts`. Replace the placeholder `sandbox/src/index.ts`.
 - **Begin**: implement `path-guard.ts` first (everything else depends on it), then `exec.ts`, then the simplest tool (`read-file`) end-to-end before scaling out.
@@ -195,7 +196,7 @@ Wire both outputs into `mastra/src/mastra/index.ts`: `new Mastra({ storage, agen
   - **E** Connection-status badges for Mastra and Sandbox.
 - **Start now?** Phase 2 shell is already in place. Each sub-part needs different backend pieces:
   - A needs T2 (Planner's `delegation` hooks emit events on the bus) — replaces the mocked agent-log feed.
-  - B needs `SANDBOX_WORKSPACE_DIR` to exist (T1 + T6) — replaces the mocked file tree in `bottom-panel.tsx`.
+  - B needs the sandbox-root dir to exist (T1 + T6 — both services share `mastra/src/mastra/sandbox-root.ts` / `sandbox/src/index.ts`) — replaces the mocked file tree in `bottom-panel.tsx`.
   - C needs T6 actually writing files — replaces `mock-product-tour.tsx` in `player-panel.tsx`.
   - D needs T1's `/uploads` route — adds the dropzone to the existing `chat-panel.tsx`.
   - E needs T7's MCP client (sandbox health) and the SSE stream from A — adds badges to `topbar.tsx`.
