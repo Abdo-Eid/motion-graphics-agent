@@ -92,7 +92,8 @@ If classification is unclear, ask one focused question before delegating.
 ```ts
 // agents/planner.ts
 import { Agent } from '@mastra/core/agent'
-import { setBriefTool } from '../memory/access'
+import { agentModel } from '../model'
+import { setBrief } from '../memory/access'
 import { retrieveProjectKnowledge } from '../knowledge/retrieve'
 import { artDirectorAgent } from './art-director'
 import { implementorAgent } from './implementor'
@@ -102,11 +103,11 @@ export const plannerAgent = new Agent({
   id: 'planner-agent',
   name: 'Planner',
   instructions: `...`,                         // see "Instructions To Write"
-  model: process.env.AGENT_MODEL!,             // provider/model string, configured at deploy time
+  model: agentModel(),
 
   // Regular tools the Planner uses directly:
   tools: {
-    setBrief: setBriefTool,                    // role-bound to 'planner'
+    setBrief,                                  // role-bound to 'planner'
     retrieveProjectKnowledge,                  // RAG
   },
 

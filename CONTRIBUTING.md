@@ -107,8 +107,8 @@ T1 splits into two parallelizable tracks. Overview lives in `tasks/phase-3-memor
 - **Spec**: `tasks/phase-3-knowledge-and-uploads.md`
 - **What**: Project Knowledge Store (`LibSQLVector` + chunker + embeddings + `retrieveProjectKnowledge` tool); upload pipeline (`POST /uploads` + per-type handlers registered as Mastra `apiRoutes`).
 - **Start now?** Yes — runs in parallel with T1A. Stub `addAsset` locally until T1A lands; swap to the real import at merge.
-- **Files** (all new): `mastra/src/mastra/knowledge/{store,embeddings,chunker,retrieve}.ts`, `mastra/src/mastra/uploads/{router,ingest}.ts`, `mastra/src/mastra/uploads/handlers/{pdf,csv,image,asset}.ts`. Adds `pdf-parse`, `@ai-sdk/openai`, `ai` to `mastra/package.json`.
-- **Begin**: lock the `Asset` zod shape with T1A first, then build `knowledge/embeddings.ts` + `chunker.ts` + `store.ts` against a small fixture, then the upload router with handlers in order asset → csv → image → pdf.
+- **Files** (all new): `mastra/src/mastra/knowledge/{store,embeddings,chunker,retrieve}.ts`, `mastra/src/mastra/uploads/{router,ingest}.ts`, `mastra/src/mastra/uploads/handlers/{pdf,text,csv,image}.ts`. Adds `pdf-parse` and `ai` to `mastra/package.json`; embeddings use Track A's shared `embeddingModel()` from `mastra/src/mastra/model.ts`.
+- **Begin**: lock the `Asset` zod shape with T1A first, then build `knowledge/embeddings.ts` + `chunker.ts` + `store.ts` against a small fixture, then the upload router with handlers in order text/pdf → csv → image.
 - **Checkpoint**: PDF upload → chunks in Knowledge Store, image asset → `Asset` row + file copy, CSV → file copy.
 - **Docs**: <https://ai-sdk.dev/docs/ai-sdk-core/embeddings>, <https://docs.turso.tech/sdk/ts/quickstart>, <https://mastra.ai/docs/server-db/custom-api-routes>.
 

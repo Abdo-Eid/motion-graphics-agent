@@ -33,12 +33,13 @@ This agent writes real React and Remotion code.
 
 ```ts
 import { Agent } from '@mastra/core/agent'
+import { agentModel } from '../model'
 
 export const implementorAgent = new Agent({
   id: 'implementor-agent',
   name: 'Implementor',
   instructions: `...`,
-  model: process.env.AGENT_MODEL!,             // provider/model string, configured at deploy time
+  model: agentModel(),
   tools: {},
 })
 ```

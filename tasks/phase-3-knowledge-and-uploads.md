@@ -14,7 +14,7 @@ Own the project knowledge layer and the upload pipeline that feeds it.
 | Decision               | Choice                                                                                                                                                       |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Knowledge Store vector | `@mastra/libsql` `LibSQLVector`, separate instance from any Memory-internal vector; same DB file as Track A is fine                                          |
-| Embedding model        | AI SDK against an OpenAI-compatible endpoint via env (`EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`); concrete provider chosen at deploy time |
+| Embedding model        | AI SDK `embed` / `embedMany` using Track A's shared `embeddingModel()` factory from `mastra/src/mastra/model.ts`                         |
 | Asset storage          | Files copied into `SANDBOX_WORKSPACE_DIR/assets/` so the Implementor reads them by relative path                                                             |
 | Upload transport       | Mastra server `apiRoutes` on port 4111 (no separate Express app)                                                                                             |
 
@@ -24,7 +24,7 @@ Own the project knowledge layer and the upload pipeline that feeds it.
 mastra/src/mastra/
   knowledge/
     store.ts              # LibSQLVector index for chunks
-    embeddings.ts         # AI SDK embed() against the configured embedding endpoint
+    embeddings.ts         # AI SDK embed() / embedMany() against embeddingModel()
     chunker.ts            # text -> chunks
     retrieve.ts           # retrieveProjectKnowledge tool exposed to Planner / Art Director only
   uploads/
@@ -48,7 +48,7 @@ mastra/src/mastra/
 - **Backend:** `LibSQLVector` (own instance, same DB file as Track A's memory).
 - **Schema:** `(id, projectId, source, chunkIndex, text, embedding, metadata)`.
 - **Chunking:** ~500-token chunks with ~50-token overlap. Source-aware (don't break mid-section in markdown).
-- **Embeddings:** AI SDK `embedMany`/`embed` against the configured OpenAI-compatible endpoint; cache by chunk hash so re-uploads don't re-embed unchanged text.
+- **Embeddings:** AI SDK `embedMany`/`embed` against `embeddingModel()` from `../model`; cache by chunk hash so re-uploads don't re-embed unchanged text.
 - **Retrieval tool:** `retrieveProjectKnowledge({ query, k })` exposed to **Planner** and **Art Director** only. Returns `{ text, source, score }[]`.
 - **Implementor does not get retrieval.** It works from Workspace State + skill docs only.
 
@@ -109,7 +109,7 @@ Responsibilities:
 ```
 mastra/src/mastra/knowledge/
   store.ts              LibSQLVector index for chunks
-  embeddings.ts         AI SDK embed/embedMany against EMBEDDING_BASE_URL
+  embeddings.ts         AI SDK embed/embedMany against embeddingModel()
   chunker.ts            Text -> chunks with overlap
   retrieve.ts           retrieveProjectKnowledge tool
 
@@ -129,7 +129,6 @@ mastra/src/mastra/uploads/
 To `mastra/package.json` (Track B owns these — Track A doesn't touch deps):
 
 - `pdf-parse` — PDF text extraction
-- `@ai-sdk/openai` — OpenAI-compatible provider for embeddings
 - `ai` — `embed` / `embedMany` from AI SDK core
 
 Verify versions against the AI SDK docs before adding.
@@ -143,9 +142,7 @@ Verify versions against the AI SDK docs before adding.
 
 ```env
 # mastra/.env (Track B's vars)
-EMBEDDING_BASE_URL=
-EMBEDDING_API_KEY=
-EMBEDDING_MODEL=
+AZURE_EMBEDDING_DEPLOYMENT=text-embedding-3-small
 SANDBOX_WORKSPACE_DIR=../sandbox/.workspace
 ```
 

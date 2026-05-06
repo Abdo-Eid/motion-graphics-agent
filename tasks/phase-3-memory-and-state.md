@@ -1,5 +1,7 @@
 # Phase 3 — T1A — Memory & Workspace State
 
+> **Status: Complete.** Backend layer implemented and verified. Long-form delivery record: [`phase-3-memory-and-state-delivery-notes.md`](phase-3-memory-and-state-delivery-notes.md).
+
 Track A of T1. Pairs with [`phase-3-knowledge-and-uploads.md`](phase-3-knowledge-and-uploads.md) (Track B). Both tracks share the spec overview in [`phase-3-memory-knowledge-uploads.md`](phase-3-memory-knowledge-uploads.md).
 
 ## Your Role
@@ -28,6 +30,8 @@ mastra/src/mastra/memory/
   index.ts              # configured Memory instance (working memory + observational memory) + storage handle
   access.ts             # role-guarded tools (setBrief, setStyleContext, setSceneDesign, addAsset)
                         # agents are readOnly: true on WM; Implementor gets zero write tools
+mastra/src/mastra/
+  model.ts              # shared Azure `agentModel()` factory (T2/T3/T4 + T1B import this)
 ```
 
 No `store.ts` and no `summarizer.ts` — Mastra Memory replaces both.
@@ -85,7 +89,7 @@ export const WorkspaceState = z.object({
 });
 ```
 
-`projectId` doubles as `threadId` (and `resourceId`) when invoking agents. Mastra working memory uses **merge semantics** for schema mode — partial updates preserve untouched fields, set a field to `null` to delete it, arrays are replaced wholesale.
+`projectId` doubles as `threadId` (and `resourceId`) when invoking agents. Mastra working memory schema mode is documented as merge-semantics, but in our installed version direct partial writes via `memory.updateWorkingMemory(...)` did **not** preserve untouched object fields reliably — see [Delivery Summary](#delivery-summary). All setters in `access.ts` therefore do explicit read-modify-write.
 
 > **Locked with Track B.** The `Asset` shape above is the agreed contract. Only images produce `Asset` rows in the MVP. References (image attachments the Planner classifies as inspiration, not project assets) attach to the conversation message and skip `addAsset`. Docs (pdf/csv/txt/md) never produce `Asset` rows. Either track can widen scope only by changing both task files together.
 
@@ -112,96 +116,105 @@ The **Implementor has no memory-write tools at all.** It is pure-consumer of wor
 - Chat thread per `threadId` (= `projectId`).
 - **Observational Memory** runs in the background. Once raw message tokens cross the configured threshold, the Observer compresses them into a dense observation log; the Reflector condenses observations once they grow too large.
 - Working memory is always present in context regardless of compression — that's what guarantees the brief and scene statuses survive truncation losslessly.
-- Configuration lives in `memory/index.ts`. Default settings are fine; override the OM model via env if needed (no provider locked in here — pick at deploy time).
+- Configuration lives in `memory/index.ts`. Defaults shipped as: observation triggers above ~30k message tokens; reflection above ~40k observation tokens; OM uses the shared `agentModel()`.
 
 There is **no** `summarizer.ts` and **no** `readContext()` helper. Agents read context the normal Mastra way (`memory: { thread, resource }` on `agent.generate(...)`).
 
-## Files To Create
-
-```
-mastra/src/mastra/memory/
-  schema.ts             Zod types: Brief, StyleContext, SceneRecord, Asset, WorkspaceState
-  index.ts              Configured Memory instance + LibSQLStore handle; exports `memory`, `storage`
-  access.ts             Role-guarded createTool wrappers (setBrief, setStyleContext, setSceneDesign, addAsset)
-```
-
 ## Wiring
 
-- Export `memory`, `storage`, and the role-guarded tools from `memory/access.ts`. T2/T3/T4 import these. Track B imports `addAsset` from here.
+- `memory/index.ts` exports `memory` and `storage`. `memory/access.ts` exports the four role-guarded tools. T2/T3/T4 import these. Track B imports `addAsset` from `access.ts`.
 - Each agent (T2/T3/T4) gets the shared `Memory` instance with `workingMemory.readOnly: true` and **only** the setter tools that match its role attached.
-- The actual `Mastra({ ... })` wiring in `mastra/src/mastra/index.ts` is shared with Track B and lands in the merge step — agree who does it.
+- Root `Mastra({ ... })` keeps the named registry `memory: { workspace: memory }` so `mastra.getMemory("workspace")` and Studio's Memory tab work. Tools live on agents — there is no global `tools: { ... }` block on `Mastra`.
 
 ## Configuration
 
 ```env
 # mastra/.env (Track A's vars)
-LIBSQL_URL=file:./data/motion-graphics-agent.db
+LIBSQL_URL=file:/absolute/path/to/data/motion-graphics-agent.db
 ```
 
-The same `LIBSQL_URL` is reused by Track B for its vector index.
+The same `LIBSQL_URL` is reused by Track B for its vector index. **Use an absolute `file:` path.** Relative paths did not resolve consistently under `mastra dev`'s bundler (observed: `Unable to open connection to local database`).
 
 ## Checkpoints
 
-You verify everything through **Mastra Studio** (the dev UI bundled with `@mastra/core`). No frontend work, no `curl`. Run the dev server, open the Studio URL it prints, use the Playground.
+Verified via Mastra Studio and deterministic backend scripts (Studio's Working Memory panel was unreliable on its own — it sometimes showed the schema template instead of the live WM). Run from `mastra/`:
 
-```bash
-bun --filter mastra dev
+```powershell
+bun run smoke.ts                      # Azure chat + embedding wire proof
+bun run scripts/test-memory-tools.ts  # all four setters + role rejection (PASS)
+bun --filter mastra dev               # opens Studio for manual spot checks
 ```
 
-To exercise the memory layer in Studio you need _something_ registered with it. Wire a throwaway test agent in `mastra/src/mastra/index.ts` that uses the shared `memory` instance and has `setBrief` attached — Studio shows it in the agent list and lets you call its tools from the Playground. Delete the test agent after T2 lands the real Planner.
+1. **Memory roundtrip — PASS.** `test-memory-tools.ts` calls `setBrief` (planner), `setStyleContext` (artDirector), `setSceneDesign` (artDirector), `addAsset` (system) against `threadId='proj-1'`, then reads WM back and asserts the full `WorkspaceState` shape (`projectId`, `brief`, `styleContext`, `sceneRegistry`, `assets`).
+2. **Role rejection — PASS.** Same script calls each setter with a wrong role; each throws synchronously and WM is asserted unchanged.
+3. **Persistence — PASS.** Stop dev server, restart, reopen `proj-1` → prior messages and the working-memory `brief` are still there. The DB file exists on disk at the configured `LIBSQL_URL`.
+4. **Conversation compression — configured, runtime-confirmation pending.** Observational Memory is enabled in `memory/index.ts` with the shared model and thread scope; visibly proving the threshold trigger requires Studio-driven traffic past ~30k message tokens.
 
-1. **Memory roundtrip.**
-    - In Studio Playground, open a thread with `threadId='proj-1'` and `resourceId='proj-1'`.
-    - Call `setBrief` (with the Planner role) from the Playground tool panel with a sample brief payload.
-    - Open the thread's **Working Memory** tab in Studio → the JSON renders the `WorkspaceState` shape with your `brief` populated.
-    - Also confirm programmatically: `await memory.getWorkingMemory({ threadId: 'proj-1', resourceId: 'proj-1' })` returns the same object. A small `bun run` script in `mastra/scripts/check-memory.ts` is fine; do not add it to the package.
-    - Call `setBrief` with the Implementor role (pass the role explicitly in the tool input) → the call throws synchronously and Studio shows the error.
-2. **Persistence.** Stop the dev server, restart, reopen `proj-1` in Studio → prior messages and the working-memory `brief` are still there. Confirms `LibSQLStore` is writing to `./mastra/data/motion-graphics-agent.db` (the file should exist on disk).
-3. **Conversation compression.** Send enough turns in the Playground to cross the Observational Memory `messageTokens` threshold; Studio's Memory tab shows the observation log filling in, and the `brief` still reads back unchanged from working memory.
-
-Acceptance = all three pass _and_ the constraints below hold (Implementor has zero setter tools, every agent declares `workingMemory.readOnly: true`).
+Acceptance = (1)–(3) pass _and_ the constraints below hold (Implementor has zero setter tools, every agent that lands in T2/T3/T4 declares `workingMemory.readOnly: true`).
 
 ## Constraints
 
 - No agent calls Mastra's built-in `updateWorkingMemory` tool. Every agent has `workingMemory.readOnly: true`. Writes go through the role-guarded tools in `access.ts`.
-- Subagent delegations (T2) must pass the parent `threadId` and `resourceId` to `agent.generate(...)`; otherwise the subagent gets a fresh thread with empty working memory and cannot see the brief. Document this in `access.ts` JSDoc.
+- Subagent delegations (T2) must pass the parent `threadId` and `resourceId` to `agent.generate(...)`; otherwise the subagent gets a fresh thread with empty working memory and cannot see the brief. Documented in `access.ts` JSDoc.
 - The Implementor must not be passed any setter tool from this module.
+- `addAsset` is **system-only** and is never attached to any agent's `tools`. T1B imports it directly into the upload handlers.
 
 ## Model wiring (Azure OpenAI)
 
-This project's LLM endpoint is Azure OpenAI's `/openai/v1` surface (OpenAI-compatible). Use the standard `@ai-sdk/openai` provider with `baseURL` pointed at the resource and a small `fetch` wrapper that injects `?api-version=preview` on every request. Centralize this so every agent in T2/T3/T4 imports the same factory:
+This project's LLM endpoint is Azure OpenAI. Use the purpose-built `@ai-sdk/azure` provider and centralize the factory so every agent in T2/T3/T4 imports the same model:
 
 ```ts
-// mastra/src/mastra/model.ts
-import { createOpenAI } from "@ai-sdk/openai";
+// mastra/src/mastra/model.ts (shape)
+import { createAzure } from "@ai-sdk/azure";
+import { requireEnv } from "./utils/env.ts";
 
-const baseURL = `https://${process.env.AZURE_RESOURCE_NAME}.openai.azure.com/openai/v1`;
-
-const azureFetch: typeof fetch = (input, init) => {
-    const url = new URL(input.toString());
-    url.searchParams.set("api-version", process.env.AZURE_API_VERSION!);
-    return fetch(url, init);
-};
-
-const openai = createOpenAI({
-    apiKey: process.env.AZURE_API_KEY!,
-    baseURL,
-    fetch: azureFetch,
+const azure = createAzure({
+    resourceName: requireEnv("AZURE_RESOURCE_NAME"),
+    apiKey: requireEnv("AZURE_API_KEY"),
+    apiVersion: requireEnv("AZURE_API_VERSION"),
 });
 
-export const agentModel = () => openai.chat(process.env.AZURE_CHAT_DEPLOYMENT!);
+export const agentModel = () => azure(requireEnv("AZURE_CHAT_DEPLOYMENT"));
+export const embeddingModel = () => azure.embedding(requireEnv("AZURE_EMBEDDING_DEPLOYMENT"));
 ```
 
-Then in each agent: `new Agent({ ..., model: agentModel() })`. Verified working by `mastra/smoke.ts`. See `.env.example` for the env vars.
+Then in each agent: `new Agent({ ..., model: agentModel() })`. T1B imports `embeddingModel()`. Verified by `mastra/smoke.ts`. See `.env.example` for the env vars.
+
+**Provider choice.** Earlier drafts used `@ai-sdk/openai` plus a custom `fetch` wrapper to inject `api-version` on Azure's `/openai/v1` surface. That works, but it is fragile: a query string in `baseURL` breaks path concatenation, and module load order must guarantee env is loaded before provider construction. `@ai-sdk/azure` removes those edge cases and is what `mastra/smoke.ts` now proves.
 
 **Gotchas worth knowing**:
 
 - `AZURE_API_VERSION` must be `preview` (or `latest`), not a date like `2025-01-01-preview`. Date versions are only valid against the legacy `/openai/deployments/<dep>/...` URL shape; the `/openai/v1` surface rejects them with `400 API version not supported`.
-- Don't use `@ai-sdk/azure` — its v3 line forces the `/openai/v1` URL but doesn't expose the api-version override cleanly. Plain `@ai-sdk/openai` + custom fetch is simpler and correct.
-- Don't use Mastra's model-router string form (`model: "openai/<dep>"`) — recent versions route through `/responses`, which Azure's input validator rejects.
+- Don't use Mastra's model-router string form (`model: "openai/<dep>"`) — recent versions route through `/responses`, which Azure's input validator rejects (`Invalid value: ''`).
+- Don't reintroduce the custom-`fetch` `baseURL` pattern unless there is a concrete multi-provider reason and the smoke test is updated to cover it.
+
+## Delivery Summary
+
+Final files (all production):
+
+- `mastra/src/mastra/memory/schema.ts`
+- `mastra/src/mastra/memory/index.ts`
+- `mastra/src/mastra/memory/access.ts`
+- `mastra/src/mastra/model.ts`
+- `mastra/src/mastra/utils/env.ts` (shared `requireEnv` helper)
+
+Verification scaffolding (delete when T2 lands and ships the real Planner / Art Director / Implementor wiring):
+
+- `mastra/src/mastra/index.ts` — `memoryTestAgent` + root `Mastra` registration.
+- `mastra/scripts/test-memory-tools.ts` — backend-deterministic acceptance proof for the four setters and role rejection. Not registered in `package.json` scripts; kept as a regression guard against the merge-semantics and `projectId`-drop bugs.
+
+Bugs hit during verification and how they were resolved:
+
+1. **LibSQL relative path under `mastra dev`** → use absolute `file:` path in `mastra/.env`.
+2. **Studio Working Memory panel unreliable** (template view leaked over live state) → moved acceptance proof to `scripts/test-memory-tools.ts`; Studio is now spot-check only.
+3. **Direct partial WM writes did not merge** in this version's direct-API path — a later `setStyleContext` could clobber an earlier `brief`. Fix: explicit read-modify-write in every setter before `memory.updateWorkingMemory(...)`.
+4. **`projectId` dropped on partial writes** (schema-required, not preserved by partial-write attempt). Fix covered by (3): build the full next state before writing.
+
+Architectural caveat carried forward: `memoryTestAgent` exposes more setter tools than any one production agent should. Real role-separated tool exposure (`setBrief` → Planner only, `setStyleContext` + `setSceneDesign` → Art Director only, no setters on Implementor) is enforced when T2/T3/T4 wire the actual agents. T1A backend role guards in `access.ts` already reject wrong-role calls regardless of which agent invokes them.
 
 ## Reference
 
+- [`phase-3-memory-and-state-delivery-notes.md`](phase-3-memory-and-state-delivery-notes.md) — long-form delivery record (chronology, root-cause analysis, evidence)
 - [`phase-3-memory-knowledge-uploads.md`](phase-3-memory-knowledge-uploads.md) — overall T1 overview
 - [`phase-3-knowledge-and-uploads.md`](phase-3-knowledge-and-uploads.md) — Track B (consumes `addAsset` and `Asset` schema from here)
 - [`phase-3-planner-agent.md`](phase-3-planner-agent.md) — supervisor wiring + `delegation` hooks that invoke subagents using these helpers

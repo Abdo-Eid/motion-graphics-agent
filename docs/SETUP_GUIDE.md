@@ -112,19 +112,18 @@ motion-graphics-agent/
 7. Create `.env` at root:
 
     ```
-    # whichever provider's key your AGENT_MODEL points at — see https://mastra.ai/models
-    # e.g. OPENAI_API_KEY=..., ANTHROPIC_API_KEY=..., GOOGLE_GENERATIVE_AI_API_KEY=...
-    AGENT_MODEL=<provider/model string, e.g. openai/gpt-5-mini>
+    AZURE_RESOURCE_NAME=<azure-resource-name>
+    AZURE_API_KEY=<azure-resource-key>
+    AZURE_API_VERSION=preview
+    AZURE_CHAT_DEPLOYMENT=<chat-deployment-name>
+    AZURE_EMBEDDING_DEPLOYMENT=<embedding-deployment-name>
     SANDBOX_MCP_URL=http://localhost:4311/mcp
     SANDBOX_WORKSPACE_DIR=./sandbox/.workspace
+    SANDBOX_HTTP_PORT=4311
     LIBSQL_URL=file:./mastra/data/motion-graphics-agent.db
-    # Embeddings (T1B) — any OpenAI-compatible endpoint
-    EMBEDDING_BASE_URL=
-    EMBEDDING_API_KEY=
-    EMBEDDING_MODEL=
     ```
 
-    Mastra's model router auto-detects provider keys by env-var name (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, etc.). No extra provider package needed for routed providers.
+    The app uses `@ai-sdk/azure` through `mastra/src/mastra/model.ts`; do not add `AGENT_MODEL` or provider-router env vars for the Phase 3 agents.
 
 8. Run `bun install` from root to link workspaces.
 

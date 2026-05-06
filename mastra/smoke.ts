@@ -4,13 +4,13 @@
  * Run from repo root:
  *   bun run mastra/smoke.ts
  *
- * Approach: hit Azure's new `/openai/v1` surface with the standard OpenAI
- * provider from the AI SDK. The endpoint is OpenAI-compatible; we just need
- * to add `?api-version=preview` to every request via a fetch wrapper.
+ * Uses @ai-sdk/azure (the purpose-built Azure provider). It bakes in the
+ * correct URL shape, auth header, and api-version handling — no custom
+ * fetch wrapper, no baseURL string surgery.
  */
 
 import { Agent } from "@mastra/core/agent";
-import { createOpenAI } from "@ai-sdk/openai";
+import { createAzure } from "@ai-sdk/azure";
 import { embed } from "ai";
 
 function requireEnv(name: string): string {
@@ -26,30 +26,22 @@ const AZURE_API_KEY = requireEnv("AZURE_API_KEY");
 const AZURE_API_VERSION = requireEnv("AZURE_API_VERSION");
 const AZURE_CHAT_DEPLOYMENT = requireEnv("AZURE_CHAT_DEPLOYMENT");
 
-const baseURL = `https://${AZURE_RESOURCE_NAME}.openai.azure.com/openai/v1`;
-
 console.log("env ok");
-console.log("  base:", baseURL);
+console.log("  resource:", AZURE_RESOURCE_NAME);
 console.log("  deployment:", AZURE_CHAT_DEPLOYMENT);
 console.log("  api-version:", AZURE_API_VERSION);
 
-// Azure's /openai/v1 surface needs ?api-version=... on every request.
-const azureFetch: typeof fetch = (input, init) => {
-  const url = new URL(input.toString());
-  url.searchParams.set("api-version", AZURE_API_VERSION);
-  return fetch(url, init);
-};
-
-const openai = createOpenAI({
+const azure = createAzure({
+  resourceName: AZURE_RESOURCE_NAME,
   apiKey: AZURE_API_KEY,
-  baseURL,
-  fetch: azureFetch,
+  apiVersion: AZURE_API_VERSION,
 });
 
 const agent = new Agent({
+  id: "smoke",
   name: "smoke",
   instructions: "Reply with exactly the word: pong",
-  model: openai.chat(AZURE_CHAT_DEPLOYMENT),
+  model: azure(AZURE_CHAT_DEPLOYMENT),
 });
 
 const t0 = Date.now();
@@ -71,7 +63,7 @@ console.log("embedding deployment:", AZURE_EMBEDDING_DEPLOYMENT);
 
 const t1 = Date.now();
 const { embedding } = await embed({
-  model: openai.embedding(AZURE_EMBEDDING_DEPLOYMENT),
+  model: azure.embedding(AZURE_EMBEDDING_DEPLOYMENT),
   value: "smoke test embedding input",
 });
 const ems = Date.now() - t1;

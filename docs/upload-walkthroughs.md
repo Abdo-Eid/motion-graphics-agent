@@ -38,7 +38,7 @@ brand-guide.pdf
    │
    ├─ pdf-parse → text
    ├─ chunker.ts → ~500-token chunks, ~50-token overlap
-   ├─ embeddings.ts → embedMany() against EMBEDDING_BASE_URL
+   ├─ embeddings.ts → embedMany() against embeddingModel()
    │     (cached by chunk-text hash so re-uploads don't re-embed)
    └─ store.ts → LibSQLVector upsert with row shape:
        { id, projectId, source, chunkIndex, text, embedding, metadata }
