@@ -103,10 +103,14 @@ No Docker required.
 Create `.env` at the repo root:
 
 ```env
-# whichever provider's key matches your AGENT_MODEL (auto-detected by Mastra's model router)
-# e.g. OPENAI_API_KEY=..., ANTHROPIC_API_KEY=..., GOOGLE_GENERATIVE_AI_API_KEY=...
-AGENT_MODEL=<provider/model string>
+AZURE_RESOURCE_NAME=<azure-resource-name>
+AZURE_API_KEY=<azure-resource-key>
+AZURE_API_VERSION=preview
+AZURE_CHAT_DEPLOYMENT=<chat-deployment-name>
+AZURE_EMBEDDING_DEPLOYMENT=<embedding-deployment-name>
 SANDBOX_MCP_URL=http://localhost:4311/mcp
+SANDBOX_WORKSPACE_DIR=./sandbox/.workspace
+LIBSQL_URL=file:./mastra/data/motion-graphics-agent.db
 ```
 
 ### Development

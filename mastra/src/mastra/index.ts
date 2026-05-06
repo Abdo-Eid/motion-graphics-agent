@@ -3,9 +3,13 @@ import { Agent } from "@mastra/core/agent";
 import { Mastra } from "@mastra/core/mastra";
 
 import { memory, storage } from "./memory";
-import { addAsset, setBrief, setSceneDesign, setStyleContext } from "./memory/access";
+import { setBrief, setSceneDesign, setStyleContext } from "./memory/access";
 import { agentModel } from "./model";
 
+// Throwaway test agent for Studio Playground verification of T1A memory writes.
+// Delete once T2 (Planner) lands. addAsset is intentionally NOT attached: per
+// phase-3-memory-and-state.md:104, addAsset is system-only and never on an agent;
+// upload handlers in T1B import it directly.
 const memoryTestAgent = new Agent({
   id: "memory-test-agent",
   name: "Memory Test Agent",
@@ -17,7 +21,6 @@ const memoryTestAgent = new Agent({
     setBrief,
     setStyleContext,
     setSceneDesign,
-    addAsset,
   },
 });
 
@@ -25,12 +28,6 @@ export const mastra = new Mastra({
   storage,
   agents: {
     memoryTestAgent,
-  },
-  tools: {
-    setBrief,
-    setStyleContext,
-    setSceneDesign,
-    addAsset,
   },
   memory: {
     workspace: memory,

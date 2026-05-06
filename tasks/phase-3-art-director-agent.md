@@ -32,12 +32,13 @@ Its output should be implementation-ready without naming Remotion APIs.
 
 ```ts
 import { Agent } from '@mastra/core/agent'
+import { agentModel } from '../model'
 
 export const artDirectorAgent = new Agent({
   id: 'art-director-agent',
   name: 'Art Director',
   instructions: `...`,
-  model: process.env.AGENT_MODEL!,             // provider/model string, configured at deploy time
+  model: agentModel(),
   tools: {},
 })
 ```

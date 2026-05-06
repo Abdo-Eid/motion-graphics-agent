@@ -1,34 +1,25 @@
-import { createOpenAI } from "@ai-sdk/openai";
+import { createAzure } from "@ai-sdk/azure";
 
-function requireEnv(name: string): string {
-    const value = process.env[name];
-    if (!value || value.trim() === "") {
-        throw new Error(`Missing or empty env var: ${name}`);
-    }
+import { requireEnv } from "./utils/env.ts";
 
-    return value;
-}
-
-const baseURL = `https://${requireEnv("AZURE_RESOURCE_NAME")}.openai.azure.com/openai/v1`;
-const apiVersion = requireEnv("AZURE_API_VERSION");
-
-const azureFetch = Object.assign(
-    (input: string | URL | Request, init?: RequestInit) => {
-        const url = new URL(input.toString());
-        url.searchParams.set("api-version", apiVersion);
-        return fetch(url, init);
-    },
-    {
-        preconnect: (...args: Parameters<typeof fetch.preconnect>) => fetch.preconnect?.(...args),
-    },
-) satisfies typeof fetch;
-
-const openai = createOpenAI({
+const azure = createAzure({
+    resourceName: requireEnv("AZURE_RESOURCE_NAME"),
     apiKey: requireEnv("AZURE_API_KEY"),
-    baseURL,
-    fetch: azureFetch,
+    apiVersion: requireEnv("AZURE_API_VERSION"),
 });
 
+/**
+ * Shared chat model factory for every agent in T1A/T2/T3/T4.
+ * Returns a model bound to the Azure chat deployment named in env.
+ */
 export function agentModel() {
-    return openai.chat(requireEnv("AZURE_CHAT_DEPLOYMENT"));
+    return azure(requireEnv("AZURE_CHAT_DEPLOYMENT"));
+}
+
+/**
+ * Shared embedding model factory for T1B (Knowledge Store).
+ * Returns a model bound to the Azure embedding deployment named in env.
+ */
+export function embeddingModel() {
+    return azure.embedding(requireEnv("AZURE_EMBEDDING_DEPLOYMENT"));
 }
