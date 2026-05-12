@@ -1,6 +1,8 @@
 import { Agent } from "@mastra/core/agent";
 import { Mastra } from "@mastra/core/mastra";
 
+import { implementorAgent } from "./agents/implementor";
+
 import { retrieveProjectKnowledge } from "./knowledge/retrieve";
 import { memory, storage } from "./memory";
 import {
@@ -48,6 +50,7 @@ export const mastra = new Mastra({
   storage,
   agents: {
     t1TestAgent,
+    implementorAgent,
   },
   // Mastra memory registry. The key "workspace" here is a Mastra registry
   // identifier (consumed by `mastra.getMemory("workspace")` and the Studio
