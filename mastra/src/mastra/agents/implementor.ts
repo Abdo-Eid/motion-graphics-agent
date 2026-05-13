@@ -1,6 +1,6 @@
-import { Agent } from "@mastra/core/agent";
-
-import { agentModel } from "../model";
+import { Agent } from '@mastra/core/agent';
+import { readOnlyMemory } from '../memory';
+import { agentModel } from '../model';
 
 const instructions = `
 # Role
@@ -134,16 +134,19 @@ Rules for the Summary block:
 - If files were changed, mention the changed files in notes.
 - If you are blocked, mention the blocker in notes.
 - If tools are missing, state that no files were changed.
-`;
+`.trim();
 
 export const implementorAgent = new Agent({
-  id: "implementor-agent",
-  name: "Implementor",
+  id: 'implementor-agent',
+  name: 'Implementor',
   description: `Writes Remotion scene code for one scene at a time.
 Reads finalized scene design + styleContext and uses sandbox tools when available.
 Use after the Art Director has produced a design, or for exact unambiguous code edits.
 Returns a Markdown reply ending in a "## Summary" block. Does NOT write working memory.`,
   instructions,
   model: agentModel(),
-  tools: {},
+  memory: readOnlyMemory,
+  tools: {
+    // Sandbox tools will be added here in T4
+  },
 });

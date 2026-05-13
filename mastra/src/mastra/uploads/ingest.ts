@@ -72,6 +72,13 @@ export function detectHandlerKind(
   return null;
 }
 
+/**
+ * Normalizes a MIME type string by removing any parameters, trimming whitespace,
+ * and converting the result to lowercase.
+ *
+ * @param mime - The raw MIME string, such as `"Text/Plain; charset=utf-8"`.
+ * @returns The normalized base MIME type, such as `"text/plain"`, or an empty string if none is present.
+ */
 function normalizeMime(mime: string): string {
   return mime.split(';', 1)[0]?.trim().toLowerCase() ?? '';
 }
