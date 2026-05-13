@@ -1,5 +1,5 @@
 import { Agent } from '@mastra/core/agent';
-import { memory } from '../memory';
+import { readOnlyMemory } from '../memory';
 import { agentModel } from '../model';
 
 export const implementorAgent = new Agent({
@@ -21,7 +21,7 @@ End every response with a "## Summary" block in the following format:
 - notes: <one line — what changed, what's still open, any error, recon facts, etc.>
   `.trim(),
   model: agentModel(),
-  memory,
+  memory: readOnlyMemory,
   tools: {
     // Sandbox tools will be added here in T4
   },

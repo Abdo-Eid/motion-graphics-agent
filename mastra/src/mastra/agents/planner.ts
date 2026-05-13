@@ -7,6 +7,85 @@ import { bus } from '../server/bus';
 import { artDirectorAgent } from './art-director';
 import { implementorAgent } from './implementor';
 
+type DelegationContext = {
+  primitiveId: string;
+  prompt?: string;
+  result?: unknown;
+  error?: unknown;
+  threadId?: string;
+  resourceId?: string;
+  runId?: string;
+};
+
+type DelegationState = {
+  artDirectorScene: number | null;
+  implementorScene: number | null;
+};
+
+const delegationStates = new Map<string, DelegationState>();
+
+function delegationScopeId(context: DelegationContext): string {
+  return context.runId ?? context.threadId ?? context.resourceId ?? 'global';
+}
+
+function sceneNumberFromPrompt(prompt: string | undefined): number | null {
+  if (!prompt) {
+    return null;
+  }
+
+  const patterns = [
+    /\bscene(?:\s+number)?\s*[:#-]?\s*(\d+)\b/i,
+    /\bfor\s+scene\s+(\d+)\b/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = prompt.match(pattern);
+    const sceneNumber = match?.[1] ? Number.parseInt(match[1], 10) : Number.NaN;
+
+    if (Number.isFinite(sceneNumber)) {
+      return sceneNumber;
+    }
+  }
+
+  return null;
+}
+
+function getDelegationState(scopeId: string): DelegationState {
+  const existing = delegationStates.get(scopeId);
+
+  if (existing) {
+    return existing;
+  }
+
+  const created: DelegationState = {
+    artDirectorScene: null,
+    implementorScene: null,
+  };
+
+  delegationStates.set(scopeId, created);
+  return created;
+}
+
+function clearDelegationState(scopeId: string, primitiveId: string) {
+  const state = delegationStates.get(scopeId);
+
+  if (!state) {
+    return;
+  }
+
+  if (primitiveId === 'art-director-agent') {
+    state.artDirectorScene = null;
+  }
+
+  if (primitiveId === 'implementor-agent') {
+    state.implementorScene = null;
+  }
+
+  if (state.artDirectorScene === null && state.implementorScene === null) {
+    delegationStates.delete(scopeId);
+  }
+}
+
 export const plannerAgent = new Agent({
   id: 'planner-agent',
   name: 'Planner',
@@ -52,34 +131,89 @@ You never write code, never read/write files, and never use sandbox tools direct
     maxSteps: 20,
     delegation: {
       onDelegationStart: async (ctx) => {
-        // Track in-flight agents to enforce invariants
-        const inFlight = ctx.activeDelegations || [];
-        const implementorInFlight = inFlight.some(d => d.primitiveId === 'implementor-agent');
+        const context = ctx as DelegationContext;
+        const scopeId = delegationScopeId(context);
+        const state = getDelegationState(scopeId);
+        const sceneNumber = sceneNumberFromPrompt(context.prompt);
 
-        if (ctx.primitiveId === 'implementor-agent' && implementorInFlight) {
-          return { proceed: false, rejectionReason: 'Implementor already running for another scene.' };
+        if (context.primitiveId === 'art-director-agent') {
+          if (state.artDirectorScene !== null) {
+            return { proceed: false, rejectionReason: 'Art Director already running for another scene.' };
+          }
+
+          if (
+            sceneNumber !== null &&
+            state.implementorScene !== null &&
+            sceneNumber > state.implementorScene + 1
+          ) {
+            return {
+              proceed: false,
+              rejectionReason: 'Art Director cannot move more than one scene ahead of the Implementor.',
+            };
+          }
+
+          if (
+            sceneNumber !== null &&
+            state.implementorScene !== null &&
+            sceneNumber === state.implementorScene
+          ) {
+            return {
+              proceed: false,
+              rejectionReason: 'Art Director and Implementor cannot run on the same scene simultaneously.',
+            };
+          }
+
+          state.artDirectorScene = sceneNumber;
         }
-        
+
+        if (context.primitiveId === 'implementor-agent') {
+          if (state.implementorScene !== null) {
+            return { proceed: false, rejectionReason: 'Implementor already running for another scene.' };
+          }
+
+          if (
+            sceneNumber !== null &&
+            state.artDirectorScene !== null &&
+            sceneNumber === state.artDirectorScene
+          ) {
+            return {
+              proceed: false,
+              rejectionReason: 'Implementor must wait until the Art Director finishes that scene.',
+            };
+          }
+
+          state.implementorScene = sceneNumber;
+        }
+
         bus.emit('agent.start', {
-          agent: ctx.primitiveId,
-          input: ctx.prompt,
+          agent: context.primitiveId,
+          sceneNumber: sceneNumber ?? undefined,
+          input: context.prompt,
         });
-        
+
         return { proceed: true };
       },
 
       onDelegationComplete: async (ctx) => {
-        if (ctx.error) {
+        const context = ctx as DelegationContext;
+        const scopeId = delegationScopeId(context);
+        const sceneNumber = sceneNumberFromPrompt(context.prompt);
+
+        clearDelegationState(scopeId, context.primitiveId);
+
+        if (context.error) {
           bus.emit('agent.error', {
-            agent: ctx.primitiveId,
-            error: String(ctx.error),
+            agent: context.primitiveId,
+            sceneNumber: sceneNumber ?? undefined,
+            error: String(context.error),
           });
           return;
         }
-        
+
         bus.emit('agent.end', {
-          agent: ctx.primitiveId,
-          output: ctx.result,
+          agent: context.primitiveId,
+          sceneNumber: sceneNumber ?? undefined,
+          output: context.result,
         });
       },
     },

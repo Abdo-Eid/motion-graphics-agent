@@ -24,3 +24,19 @@ export const memory = new Memory({
         },
     },
 });
+
+export const readOnlyMemory = new Memory({
+    storage,
+    options: {
+        readOnly: true,
+        workingMemory: {
+            enabled: true,
+            schema: WorkspaceStateSchema,
+            scope: "thread",
+        },
+        observationalMemory: {
+            model: agentModel(),
+            scope: "thread",
+        },
+    },
+});

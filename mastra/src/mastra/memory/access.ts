@@ -1,6 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 
+import { bus } from "../server/bus.ts";
 import { memory } from "./index.ts";
 import {
     AssetSchema,
@@ -22,17 +23,17 @@ import {
 
 const SET_BRIEF_ALLOWED: ReadonlySet<string> = new Set([
     "t1-test-agent", // T1 test stand-in; remove when Planner ships.
-    "planner",
+    "planner-agent",
 ]);
 
 const SET_STYLE_CONTEXT_ALLOWED: ReadonlySet<string> = new Set([
     "t1-test-agent",
-    "art-director",
+    "art-director-agent",
 ]);
 
 const SET_SCENE_DESIGN_ALLOWED: ReadonlySet<string> = new Set([
     "t1-test-agent",
-    "art-director",
+    "art-director-agent",
 ]);
 
 interface AgentToolContext {
@@ -80,6 +81,7 @@ function requireCaller(
     context: AgentToolContext | undefined,
     toolName: string,
     allowed: ReadonlySet<string>,
+    expectedRole: string,
 ): string {
     const agentId = context?.agent?.agentId;
 
@@ -90,6 +92,11 @@ function requireCaller(
     }
 
     if (!allowed.has(agentId)) {
+        bus.emit("field-ownership-violation", {
+            field: toolName,
+            role: agentId,
+            expectedRole,
+        });
         throw new Error(
             `${toolName} not allowed for agent "${agentId}"`,
         );
@@ -152,7 +159,7 @@ export const setBrief = createTool({
     inputSchema: SetBriefInput,
     outputSchema: SetBriefOutput,
     execute: async ({ brief }, context) => {
-        requireCaller(context, "setBrief", SET_BRIEF_ALLOWED);
+        requireCaller(context, "setBrief", SET_BRIEF_ALLOWED, "planner-agent");
 
         const projectId = projectIdFromContext(context, "setBrief");
 
@@ -195,7 +202,12 @@ export const setStyleContext = createTool({
     inputSchema: SetStyleContextInput,
     outputSchema: SetStyleContextOutput,
     execute: async ({ styleContext }, context) => {
-        requireCaller(context, "setStyleContext", SET_STYLE_CONTEXT_ALLOWED);
+        requireCaller(
+            context,
+            "setStyleContext",
+            SET_STYLE_CONTEXT_ALLOWED,
+            "art-director-agent",
+        );
 
         const projectId = projectIdFromContext(context, "setStyleContext");
 
@@ -244,7 +256,12 @@ export const setSceneDesign = createTool({
     inputSchema: SetSceneDesignInput,
     outputSchema: SetSceneDesignOutput,
     execute: async ({ sceneNumber, name, design }, context) => {
-        requireCaller(context, "setSceneDesign", SET_SCENE_DESIGN_ALLOWED);
+        requireCaller(
+            context,
+            "setSceneDesign",
+            SET_SCENE_DESIGN_ALLOWED,
+            "art-director-agent",
+        );
 
         const projectId = projectIdFromContext(context, "setSceneDesign");
 

@@ -6,7 +6,6 @@ import { plannerAgent } from "./agents/planner";
 import { memory, storage } from "./memory";
 import { uploadRoutes } from "./uploads/router";
 import { createStudioAttachmentMiddleware } from "./uploads/studio-bridge";
-import { localWorkspace } from "./workspace-config";
 
 export const mastra = new Mastra({
   storage,
@@ -22,11 +21,6 @@ export const mastra = new Mastra({
   memory: {
     workspace: memory,
   },
-  // Real `@mastra/core/workspace` Workspace — exposes `mastra_workspace_*`
-  // file/sandbox/search tools to every agent for Studio testing. Local-only,
-  // dev-only; the durable sandbox boundary is still the Bun MCP service
-  // described in docs/local-sandbox-service-design.md.
-  workspace: localWorkspace,
   server: {
     apiRoutes: uploadRoutes,
     middleware: [
