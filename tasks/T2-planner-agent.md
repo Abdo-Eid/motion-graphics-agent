@@ -1,5 +1,7 @@
 # Phase 3 — Planner Agent (Supervisor) + Subagent Delegation
 
+> **Status:** Complete on `main` as the current baseline. Keep this spec as the contract for future edits and regressions.
+
 ## Your Role
 
 Build the **Planner agent** as a Mastra **supervisor agent**: it owns the user conversation, classifies intent, produces the brief, and dispatches the Art Director and Implementor as subagents wired through Mastra's built-in `agents: { ... }` property. Routing rules live in the Planner's system prompt — no separate orchestrator, no hand-rolled delegation tools.
@@ -330,10 +332,10 @@ Expected: Planner emits only `agent-implementor`. Art Director is not invoked.
 
 ## Reference
 
-- [`phase-3-memory-and-state.md`](phase-3-memory-and-state.md) — `setBrief` and the role-guarded helpers the Planner uses
-- [`phase-3-knowledge-and-uploads.md`](phase-3-knowledge-and-uploads.md) — `retrieveProjectKnowledge` tool the Planner consumes
-- [`phase-3-art-director-agent.md`](phase-3-art-director-agent.md) — subagent invoked via `agent-artDirector`
-- [`phase-3-implementor-agent.md`](phase-3-implementor-agent.md) — subagent invoked via `agent-implementor`
+- [`T1A-memory-and-state.md`](T1A-memory-and-state.md) — `setBrief` and the role-guarded helpers the Planner uses
+- [`T1B-knowledge-and-uploads.md`](T1B-knowledge-and-uploads.md) — `retrieveProjectKnowledge` tool the Planner consumes
+- [`T3-art-director-agent.md`](T3-art-director-agent.md) — subagent invoked via `agent-artDirector`
+- [`T4-implementor-agent.md`](T4-implementor-agent.md) — subagent invoked via `agent-implementor`
 - `docs/SETUP_GUIDE.md`
 - `docs/project-knowledge-and-skills.md`
 - Mastra supervisor agents: <https://mastra.ai/docs/agents/supervisor-agents>

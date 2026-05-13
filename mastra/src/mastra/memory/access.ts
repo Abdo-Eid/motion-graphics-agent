@@ -10,7 +10,7 @@ import {
     WorkspaceStateSchema,
 } from "./schema.ts";
 
-// FUTURE (Option 2 — phase-3-memory-and-state.md): when T2/T3/T4 land, each
+// FUTURE (Option 2 — T1A-memory-and-state.md): when T2/T3/T4 land, each
 // real agent gets ONLY the setter tool that matches its role. Planner →
 // `setBrief`. Art Director → `setStyleContext` + `setSceneDesign`.
 // Implementor → none. The wiring in `mastra/src/mastra/index.ts` becomes
@@ -338,7 +338,7 @@ export async function appendAsset(input: { projectId: string; asset: AppendAsset
 }
 
 // addAsset is system-only and never attached to an agent (per
-// phase-3-memory-and-state.md), so it keeps an explicit `role: "system"`
+// T1A-memory-and-state.md), so it keeps an explicit `role: "system"`
 // gate plus the explicit projectId — there is no calling agent context to
 // read identity from.
 const SystemRole = z.enum(["system"]);

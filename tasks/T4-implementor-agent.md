@@ -1,6 +1,8 @@
 # Phase 3 — Implementor Agent
 
-> **Architecture note.** Invoked as a subagent by the Planner via the auto-generated `agent-implementor` tool (Mastra supervisor pattern). See [`phase-3-planner-agent.md`](phase-3-planner-agent.md) for the supervisor + `delegation`-hook wiring.
+> **Architecture note.** Invoked as a subagent by the Planner via the auto-generated `agent-implementor` tool (Mastra supervisor pattern). See [`T2-planner-agent.md`](T2-planner-agent.md) for the supervisor + `delegation`-hook wiring.
+>
+> **Status:** Complete on `main` for the pre-MCP skeleton. The current baseline includes detailed instructions, read-only working-memory access, registration in `index.ts`, and descriptive fallback behavior until T7 attaches sandbox tools.
 
 ## Your Role
 
@@ -68,7 +70,7 @@ Your instructions should define:
     - short product-video scope
     - no external API calls in compositions
     - no filesystem access in browser-executed compositions
-6. **Reply contract**: end every reply with a `## Summary` block in the shape defined in [`phase-3-planner-agent.md`](phase-3-planner-agent.md) under "Subagent Summaries". On error, set `status: error` and put the error message in `notes` so the Planner can decide whether to retry or escalate.
+6. **Reply contract**: end every reply with a `## Summary` block in the shape defined in [`T2-planner-agent.md`](T2-planner-agent.md) under "Subagent Summaries". On error, set `status: error` and put the error message in `notes` so the Planner can decide whether to retry or escalate.
 
 Implementation rules:
 
@@ -79,7 +81,7 @@ Implementation rules:
 
 ## Tools
 
-The Implementor connects to the **Sandbox Service** — a separate local Bun process that exposes its tools over MCP (HTTP, default `http://localhost:4311/mcp`). The main app uses Mastra's `MCPClient` to attach those tools to this agent only. There is no Docker, no container — the sandbox runs directly on the host. See [`docs/local-sandbox-service-design.md`](../docs/local-sandbox-service-design.md) and [`phase-3-sandbox-service.md`](phase-3-sandbox-service.md).
+The Implementor connects to the **Sandbox Service** — a separate local Bun process that exposes its tools over MCP (HTTP, default `http://localhost:4311/mcp`). The main app uses Mastra's `MCPClient` to attach those tools to this agent only. There is no Docker, no container — the sandbox runs directly on the host. See [`docs/local-sandbox-service-design.md`](../docs/local-sandbox-service-design.md) and [`T6-sandbox-service.md`](T6-sandbox-service.md).
 
 The MCP tool surface the agent should use:
 
@@ -112,6 +114,8 @@ This is the only role that should use sandbox tools.
 
 The Implementor agent is configured with `workingMemory.readOnly: true` and is **not** given any of the role-guarded memory-write tools from `memory/access.ts`. Its tool surface is exclusively the sandbox MCP tools above.
 
+Before T7 lands, a valid completion for this task is the Implementor skeleton only: registered in `index.ts`, configured for read-only working memory, carrying the full instruction contract, and returning an honest `status: needs-input` summary when sandbox tools are not yet attached.
+
 ## Checkpoint
 
 Run:
@@ -131,6 +135,6 @@ Until tools are wired in, a descriptive response is acceptable.
 ## Reference
 
 - [`docs/local-sandbox-service-design.md`](../docs/local-sandbox-service-design.md) — sandbox service architecture, MCP tool surface, local provider
-- [`phase-3-sandbox-service.md`](phase-3-sandbox-service.md) — concrete steps to build the sandbox service
-- [`phase-3-planner-agent.md`](phase-3-planner-agent.md) — supervisor wiring + `delegation` hooks (how the Planner invokes this agent)
+- [`T6-sandbox-service.md`](T6-sandbox-service.md) — concrete steps to build the sandbox service
+- [`T2-planner-agent.md`](T2-planner-agent.md) — supervisor wiring + `delegation` hooks (how the Planner invokes this agent)
 - `docs/SETUP_GUIDE.md`

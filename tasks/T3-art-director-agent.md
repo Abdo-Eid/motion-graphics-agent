@@ -1,6 +1,8 @@
 # Phase 3 — Art Director Agent
 
-> **Architecture note.** Invoked as a subagent by the Planner via the auto-generated `agent-artDirector` tool (Mastra supervisor pattern). See [`phase-3-planner-agent.md`](phase-3-planner-agent.md) for the supervisor + `delegation`-hook wiring.
+> **Architecture note.** Invoked as a subagent by the Planner via the auto-generated `agent-artDirector` tool (Mastra supervisor pattern). See [`T2-planner-agent.md`](T2-planner-agent.md) for the supervisor + `delegation`-hook wiring.
+>
+> **Status:** Complete on `main` as the current baseline. Keep this spec as the contract for future edits and regressions.
 
 ## Your Role
 
@@ -58,7 +60,7 @@ Your instructions should define:
 5. **Shared memory behavior**:
    - update `styleContext` when creative decisions become explicit
    - write scene design records into `sceneRegistry`
-6. **Reply contract**: end every reply with a `## Summary` block in the shape defined in [`phase-3-planner-agent.md`](phase-3-planner-agent.md) under "Subagent Summaries". The Planner relies on this block to drive the pipeline.
+6. **Reply contract**: end every reply with a `## Summary` block in the shape defined in [`T2-planner-agent.md`](T2-planner-agent.md) under "Subagent Summaries". The Planner relies on this block to drive the pipeline.
 
 The output should describe animation in feel-based motion language, not API language. For example:
 
@@ -108,4 +110,4 @@ Expected result: the response should describe scene design clearly without writi
 
 - `docs/SETUP_GUIDE.md`
 - `docs/project-knowledge-and-skills.md`
-- [`phase-3-planner-agent.md`](phase-3-planner-agent.md) — supervisor wiring + `delegation` hooks (how the Planner invokes this agent)
+- [`T2-planner-agent.md`](T2-planner-agent.md) — supervisor wiring + `delegation` hooks (how the Planner invokes this agent)

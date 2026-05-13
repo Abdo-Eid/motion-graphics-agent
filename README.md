@@ -83,9 +83,9 @@ motion-graphics-agent/
 |  `- reference/                Historical / external reference material
 `- tasks/
    |- phase-2-frontend.md
-   |- phase-3-planner-agent.md
-   |- phase-3-art-director-agent.md
-   `- phase-3-implementor-agent.md
+   |- T2-planner-agent.md
+   |- T3-art-director-agent.md
+   `- T4-implementor-agent.md
 ```
 
 ## Getting Started

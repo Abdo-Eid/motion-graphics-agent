@@ -1,6 +1,6 @@
 # Phase 3 — T1B — Knowledge Store & Uploads
 
-**Status: Complete.** Track B of T1, delivered alongside T1A. Pairs with [`phase-3-memory-and-state.md`](phase-3-memory-and-state.md). Shared overview: [`phase-3-memory-knowledge-uploads.md`](phase-3-memory-knowledge-uploads.md).
+**Status: Complete.** Track B of T1, delivered alongside T1A. Pairs with [`T1A-memory-and-state.md`](T1A-memory-and-state.md). Shared overview: [`T1-memory-knowledge-uploads.md`](T1-memory-knowledge-uploads.md).
 
 For the role/principles framing (state layers, retrieval rules, agent read/write matrix, filesystem ownership), see [`../docs/project-knowledge-and-skills.md`](../docs/project-knowledge-and-skills.md). For per-input-type ingest traces and the accepted-MIME table, see [`../docs/upload-walkthroughs.md`](../docs/upload-walkthroughs.md). This file documents the code-level decisions and acceptance proof; do not duplicate doc content here.
 
@@ -155,8 +155,8 @@ Acceptance = all six pass *and* the constraints below hold.
 
 ## Reference
 
-- [`phase-3-memory-knowledge-uploads.md`](phase-3-memory-knowledge-uploads.md) — overall T1 overview
-- [`phase-3-memory-and-state.md`](phase-3-memory-and-state.md) — Track A (provides `Asset` schema, `appendAsset`, `addAsset`)
+- [`T1-memory-knowledge-uploads.md`](T1-memory-knowledge-uploads.md) — overall T1 overview
+- [`T1A-memory-and-state.md`](T1A-memory-and-state.md) — Track A (provides `Asset` schema, `appendAsset`, `addAsset`)
 - [`../docs/project-knowledge-and-skills.md`](../docs/project-knowledge-and-skills.md) — knowledge layer principles
 - [`../docs/upload-walkthroughs.md`](../docs/upload-walkthroughs.md) — per-type traces
 - AI SDK embeddings: <https://ai-sdk.dev/docs/ai-sdk-core/embeddings>

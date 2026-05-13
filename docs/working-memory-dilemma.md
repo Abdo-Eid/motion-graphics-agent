@@ -113,7 +113,7 @@ self-asserted argument. Two source-verified ways to obtain it:
   doesn't, it can't. The role check inside `execute` becomes redundant
   and gets deleted.
 
-The second is what `tasks/phase-3-memory-and-state.md` already
+The second is what `tasks/T1A-memory-and-state.md` already
 prescribes ("Exposing **only** the role-correct setter tools to each
 agent"); the current `role` argument is a leftover from when the test
 agent held all three setters at once. It will go away when T2/T3 land
@@ -131,7 +131,7 @@ tools that match its role.
 | Art Director      | `setStyleContext`, `setSceneDesign`|
 | Implementor       | _(no working-memory writers)_      |
 
-This is what `tasks/phase-3-memory-and-state.md` already prescribes.
+This is what `tasks/T1A-memory-and-state.md` already prescribes.
 Today the T1 test agent holds all three setters because it stands in
 for every role. When T2/T3/T4 land, each real agent gets exactly its
 allowed tools and the allowlist in `access.ts` becomes the dead-man
@@ -397,7 +397,7 @@ speculation.
 | Soft instruction guard text | `mastra/src/mastra/index.ts` (`t1TestAgent.instructions`) |
 | Source where Mastra registers the auto-tool | `node_modules/.bun/@mastra+memory@1.15.1/.../dist/index.js:17924` |
 | `readOnly` flag location | `@mastra/core` `memory/types.d.ts:682` (`BaseMemoryConfig.readOnly`) |
-| Spec doc | `tasks/phase-3-memory-and-state.md` |
+| Spec doc | `tasks/T1A-memory-and-state.md` |
 
 ## Open questions for the next reviewer
 

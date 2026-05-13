@@ -5,7 +5,7 @@
 // service via MCPClient.
 //
 // This file is a placeholder. Implementation is tracked in
-// `tasks/phase-3-sandbox-service.md`. See `docs/local-sandbox-service-design.md`
+// `tasks/T6-sandbox-service.md`. See `docs/local-sandbox-service-design.md`
 // for architecture and tool surface.
 
 import { dirname, resolve } from 'node:path'
@@ -21,4 +21,4 @@ const workspaceDir = process.env.WORKSPACE_PATH ?? resolve(here, '../.workspace'
 
 console.log(`[sandbox] starting on port ${port}`)
 console.log(`[sandbox] workspace dir: ${workspaceDir}`)
-console.log('[sandbox] not yet implemented — see tasks/phase-3-sandbox-service.md')
+console.log('[sandbox] not yet implemented — see tasks/T6-sandbox-service.md')

@@ -72,7 +72,7 @@ When you're unsure whether a piece of code is needed at all, leave it out and me
 - `docs/local-sandbox-service-design.md` — the sandbox service contract (MCP tools, local provider, why no Docker).
 - `docs/project-knowledge-and-skills.md` — knowledge store, RAG vs memory, skills system.
 - `docs/upload-walkthroughs.md` — end-to-end traces of upload ingestion per file type (PDF, CSV, image, small text).
-- `tasks/phase-*.md` — concrete task specs. **Always check these before implementing — the spec is usually already written.** Each task names the files to create, the constraints, and the checkpoint that proves it works.
+- `tasks/` task specs — concrete task specs such as `T1-memory-knowledge-uploads.md`, `T2-planner-agent.md`, and `phase-4-frontend-integration.md`. **Always check these before implementing — the spec is usually already written.** Each task names the files to create, the constraints, and the checkpoint that proves it works.
 - `docs/reference/` — historical / rejected approaches. Read for context, do not implement against.
 
 When the user asks "how do I do X", the answer is often "phase-N-X.md already specifies this — read it together with me before we start."
@@ -82,9 +82,9 @@ When the user asks "how do I do X", the answer is often "phase-N-X.md already sp
 These are real load-bearing decisions in this repo. Breaking them silently will make the agent system stop working.
 
 - **Three agents are kept separate.** Planner ↔ Art Director ↔ Implementor. Don't merge their responsibilities, don't give Planner or Art Director sandbox tools, don't have Implementor invent creative direction.
-- **Planner is a Mastra supervisor agent.** It lists Art Director and Implementor under `agents: { ... }`; Mastra auto-generates `agent-artDirector` / `agent-implementor` tools and runs delegations under the hood. Routing rules live in the Planner's system prompt; bus emission and invariant guards live in `delegation` hooks (`onDelegationStart` / `onDelegationComplete`). There is no separate orchestrator and no hand-rolled `delegations.ts`. Don't reintroduce a `workflow/` module without discussion. See `tasks/phase-3-planner-agent.md`.
+- **Planner is a Mastra supervisor agent.** It lists Art Director and Implementor under `agents: { ... }`; Mastra auto-generates `agent-artDirector` / `agent-implementor` tools and runs delegations under the hood. Routing rules live in the Planner's system prompt; bus emission and invariant guards live in `delegation` hooks (`onDelegationStart` / `onDelegationComplete`). There is no separate orchestrator and no hand-rolled `delegations.ts`. Don't reintroduce a `workflow/` module without discussion. See `tasks/T2-planner-agent.md`.
 - **Sandbox is a separate Bun service over MCP/HTTP.** No Docker, no container, no in-process file ops on the main app. If a feature seems easier "by just reading the file directly from Mastra", stop — the sandbox boundary is intentional.
-- **Workspace State has field ownership.** Each field has exactly one writer agent. Use the access helpers in `mastra/src/mastra/memory/access.ts` (once built — see `tasks/phase-3-memory-knowledge-uploads.md`); do not poke memory directly.
+- **Workspace State has field ownership.** Each field has exactly one writer agent. Use the access helpers in `mastra/src/mastra/memory/access.ts` (once built — see `tasks/T1-memory-knowledge-uploads.md`); do not poke memory directly.
 - **Tool names are generic.** `read_file`, `exec_command`, etc. Do not introduce provider-specific names like `docker_exec`, `e2b_run`, or `local_read`. The MCP surface is the stable contract.
 - **Implementor reads Workspace State + skill docs, not the Knowledge Store.** Retrieval is for Planner and Art Director only.
 - **Skill docs describe Remotion patterns, not project paths or sandbox internals.**
@@ -111,7 +111,7 @@ Always confirm a package's actual installed version against the workspace's `pac
 Before you start writing code, run this list mentally:
 
 1. Did the user explicitly ask for code, or for understanding? If understanding → explain, link, stop.
-2. Is there a `tasks/phase-*.md` that already specifies this? Read it first.
+2. Is there a task spec in `tasks/` that already specifies this? Read it first.
 3. Which file(s) will change, and have I read them recently? Read before editing.
 4. Which architecture constraints apply (listed above)?
 5. Which official docs do I need to verify the API against? Open them.

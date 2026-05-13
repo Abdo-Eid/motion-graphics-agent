@@ -110,5 +110,5 @@ Expected: the Implementor calls `list_files`, `write_file`, and `exec_command` t
 ## Reference
 
 - [`docs/local-sandbox-service-design.md`](../docs/local-sandbox-service-design.md) — architecture and rules
-- [`phase-3-implementor-agent.md`](phase-3-implementor-agent.md) — the agent that consumes these tools
+- [`T4-implementor-agent.md`](T4-implementor-agent.md) — the agent that consumes these tools
 - [`docs/reference/docker-sandbox-historical.md`](../docs/reference/docker-sandbox-historical.md) — rejected container-based approach (context only)

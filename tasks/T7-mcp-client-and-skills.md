@@ -179,6 +179,6 @@ Expected:
 
 ## Reference
 
-- [`phase-3-sandbox-service.md`](phase-3-sandbox-service.md) — the service these tools come from
-- [`phase-3-implementor-agent.md`](phase-3-implementor-agent.md) — the consumer
+- [`T6-sandbox-service.md`](T6-sandbox-service.md) — the service these tools come from
+- [`T4-implementor-agent.md`](T4-implementor-agent.md) — the consumer
 - [`docs/local-sandbox-service-design.md`](../docs/local-sandbox-service-design.md) — tool surface contract

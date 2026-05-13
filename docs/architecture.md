@@ -13,11 +13,11 @@ The Planner is a Mastra **supervisor agent**. It lists Art Director and Implemen
 
 Field ownership is enforced by the role-guarded helpers in `mastra/src/mastra/memory/access.ts` — wrong-role writes throw and emit `field-ownership-violation` on the bus regardless of which agent calls them.
 
-Canonical spec: [`../tasks/phase-3-planner-agent.md`](../tasks/phase-3-planner-agent.md). Subagent specs: [`../tasks/phase-3-art-director-agent.md`](../tasks/phase-3-art-director-agent.md), [`../tasks/phase-3-implementor-agent.md`](../tasks/phase-3-implementor-agent.md).
+Canonical spec: [`../tasks/T2-planner-agent.md`](../tasks/T2-planner-agent.md). Subagent specs: [`../tasks/T3-art-director-agent.md`](../tasks/T3-art-director-agent.md), [`../tasks/T4-implementor-agent.md`](../tasks/T4-implementor-agent.md).
 
 ## Routing (Quick Reference)
 
-The full routing table with invariants and the lockstep pipeline lives in [`../tasks/phase-3-planner-agent.md`](../tasks/phase-3-planner-agent.md). One-line summary:
+The full routing table with invariants and the lockstep pipeline lives in [`../tasks/T2-planner-agent.md`](../tasks/T2-planner-agent.md). One-line summary:
 
 - Exact tweak → `agent-implementor` only
 - Creative change → `agent-artDirector` then `agent-implementor`
@@ -55,7 +55,7 @@ Three project-scoped layers, no cross-session or user-level memory:
 2. **Workspace State** — Mastra working memory (schema mode, thread-scoped, readOnly per agent). Fields: `brief`, `styleContext`, `sceneRegistry[n].design`, `assets[]`.
 3. **Project Knowledge Store** — `LibSQLVector` index for large unstructured docs, partitioned by `projectId`.
 
-Canonical schema: [`../tasks/phase-3-memory-and-state.md`](../tasks/phase-3-memory-and-state.md). Layer principles, retrieval rules, agent read/write matrix: [`project-knowledge-and-skills.md`](project-knowledge-and-skills.md). Per-input-type ingest traces: [`upload-walkthroughs.md`](upload-walkthroughs.md).
+Canonical schema: [`../tasks/T1A-memory-and-state.md`](../tasks/T1A-memory-and-state.md). Layer principles, retrieval rules, agent read/write matrix: [`project-knowledge-and-skills.md`](project-knowledge-and-skills.md). Per-input-type ingest traces: [`upload-walkthroughs.md`](upload-walkthroughs.md).
 
 ## Tech Stack
 

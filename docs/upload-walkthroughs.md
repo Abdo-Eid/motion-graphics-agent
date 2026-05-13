@@ -6,7 +6,7 @@ End-to-end traces for every supported upload type in T1B.
 
 The shared principle: the **upload router** decides at upload time where the file lands, based on mime type and an optional `kind` hint from the caller. Only images become Workspace State `Asset` rows. Large unstructured documents (PDF / markdown / text) go into the chunked Knowledge Store. CSVs are stored as raw files for the Implementor to operate on; nothing about CSVs is pre-processed by T1.
 
-For the canonical layer definitions, see [`../PROJECT_OVERVIEW.md`](../PROJECT_OVERVIEW.md#project-state-layers). For the spec these walkthroughs implement, see [`../tasks/phase-3-knowledge-and-uploads.md`](../tasks/phase-3-knowledge-and-uploads.md). For the layer principles, see [`project-knowledge-and-skills.md`](project-knowledge-and-skills.md).
+For the canonical layer definitions, see [`../PROJECT_OVERVIEW.md`](../PROJECT_OVERVIEW.md#project-state-layers). For the spec these walkthroughs implement, see [`../tasks/T1B-knowledge-and-uploads.md`](../tasks/T1B-knowledge-and-uploads.md). For the layer principles, see [`project-knowledge-and-skills.md`](project-knowledge-and-skills.md).
 
 ---
 

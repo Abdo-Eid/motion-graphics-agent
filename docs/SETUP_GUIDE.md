@@ -170,12 +170,12 @@ The Mastra CLI in Phase 1 created the `mastra/` workspace. Now build the agent s
 
 | Order | Task | File | What to build |
 |-------|------|------|---------------|
-| 1 | Memory, Knowledge, Uploads | `tasks/phase-3-memory-knowledge-uploads.md` | Workspace State + LibSQL persistence + conversation summarization + Knowledge Store + upload pipeline |
-| 2 | Planner Agent (Supervisor) | `tasks/phase-3-planner-agent.md` | Mastra supervisor agent (auto-generated `agent-artDirector`/`agent-implementor` tools) + `delegation` hooks + in-process event bus |
-| 3 | Art Director Agent | `tasks/phase-3-art-director-agent.md` | Subagent. Scene design, styleContext, sceneRegistry design data |
-| 4 | Implementor Agent | `tasks/phase-3-implementor-agent.md` | Subagent. Remotion code execution, sandbox tools, typecheck loop |
-| 5 | Sandbox Service | `tasks/phase-3-sandbox-service.md` | Local Bun MCP service exposing file + exec tools |
-| 6 | MCP Client + Skills | `tasks/phase-3-mcp-client-and-skills.md` | Wire main app to sandbox; ship v1 skill docs |
+| 1 | Memory, Knowledge, Uploads | `tasks/T1-memory-knowledge-uploads.md` | Workspace State + LibSQL persistence + conversation summarization + Knowledge Store + upload pipeline. Complete on `main`. |
+| 2 | Planner Agent (Supervisor) | `tasks/T2-planner-agent.md` | Mastra supervisor agent (auto-generated `agent-artDirector`/`agent-implementor` tools) + `delegation` hooks + in-process event bus. Complete on `main`. |
+| 3 | Art Director Agent | `tasks/T3-art-director-agent.md` | Subagent. Scene design, styleContext, sceneRegistry design data. Complete on `main`. |
+| 4 | Implementor Agent | `tasks/T4-implementor-agent.md` | Subagent. Remotion code execution, sandbox tools, typecheck loop. Core skeleton complete on `main`; MCP tool wiring remains T6/T7 work. |
+| 5 | Sandbox Service | `tasks/T6-sandbox-service.md` | Local Bun MCP service exposing file + exec tools |
+| 6 | MCP Client + Skills | `tasks/T7-mcp-client-and-skills.md` | Wire main app to sandbox; ship v1 skill docs |
 
 > **Architecture note.** The Planner is a Mastra supervisor agent — it lists the Art Director and Implementor under `agents: { ... }` and Mastra auto-generates `agent-artDirector` / `agent-implementor` tools to dispatch them. There is no separate orchestrator and no hand-rolled wrapper tools. Routing rules live in the Planner's system prompt; bus emission and invariant guards live in `delegation` hooks.
 
@@ -200,7 +200,7 @@ For incremental edits the Planner delegates only what's needed:
 - `styleContext` — current visual language, owned by Art Director
 - `sceneRegistry` — per-scene design, status, file paths, errors; design owned by Art Director, status/errors owned by Implementor
 
-See [`phase-3-planner-agent.md`](../tasks/phase-3-planner-agent.md) for the supervisor wiring, `delegation` hooks, and event-bus details.
+See [`T2-planner-agent.md`](../tasks/T2-planner-agent.md) for the supervisor wiring, `delegation` hooks, and event-bus details.
 
 **Checkpoint:**
 
@@ -260,11 +260,11 @@ This launches sandbox, mastra, and web in parallel.
 
 After this scaffold:
 
-1. Finalize Planner instructions for briefing and routing.
-2. Finalize Art Director instructions for scene design output.
-3. Finalize Implementor instructions for code generation and verification.
-4. Add file sync from `sandbox/.workspace/` to frontend preview files.
-5. Expand shared-memory persistence and retrieval (Workspace State + Knowledge Store).
+1. Build the sandbox service tool surface in `sandbox/`.
+2. Wire the Mastra MCP client and skill docs for the Implementor.
+3. Add workspace file streaming and preview sync for Phase 4.
+4. Replace the frontend mock data seams with live backend wiring.
+5. Expand end-to-end smoke testing across uploads, agent delegation, and preview refresh.
 
 ---
 

@@ -11,7 +11,7 @@ This doc covers the *principles*: state layers, retrieval rules, agent responsib
 Three project-scoped state layers, no cross-session or user-level memory:
 
 - **Conversation Context** — chat thread + Mastra Observational Memory (auto-compresses old turns).
-- **Workspace State** — `brief`, `styleContext`, `sceneRegistry`, `assets[]`. Schema in [`../tasks/phase-3-memory-and-state.md`](../tasks/phase-3-memory-and-state.md).
+- **Workspace State** — `brief`, `styleContext`, `sceneRegistry`, `assets[]`. Schema in [`../tasks/T1A-memory-and-state.md`](../tasks/T1A-memory-and-state.md).
 - **Project Knowledge Store** — `LibSQLVector` index for large unstructured docs, partitioned by `projectId`.
 
 Canonical layer definitions and ownership rules: [`../PROJECT_OVERVIEW.md`](../PROJECT_OVERVIEW.md#project-state-layers).
@@ -107,7 +107,7 @@ Field ownership is enforced by the role-guarded helpers in `mastra/src/mastra/me
 - Reads Workspace State (brief, styleContext, sceneRegistry, assets) by default.
 - Calls `retrieveProjectKnowledge` only when a needed fact isn't already there.
 - Owns the brief; sets it via the role-guarded `setBrief` tool.
-- **Dispatches** Art Director and Implementor via Mastra's auto-generated subagent tools (`agent-artDirector`, `agent-implementor`). No separate orchestrator — see [`../tasks/phase-3-planner-agent.md`](../tasks/phase-3-planner-agent.md).
+- **Dispatches** Art Director and Implementor via Mastra's auto-generated subagent tools (`agent-artDirector`, `agent-implementor`). No separate orchestrator — see [`../tasks/T2-planner-agent.md`](../tasks/T2-planner-agent.md).
 - Plan lives in chat (natural language), not in working memory.
 
 ### Art Director
@@ -126,7 +126,7 @@ Field ownership is enforced by the role-guarded helpers in `mastra/src/mastra/me
 
 ## Skills — Staged Loading
 
-Skills are short implementation guides for the Implementor. They are **not** part of the Knowledge Store and **not** part of the upload router. The skill system is its own task (T7) — see [`../tasks/phase-3-mcp-client-and-skills.md`](../tasks/phase-3-mcp-client-and-skills.md) for the canonical spec.
+Skills are short implementation guides for the Implementor. They are **not** part of the Knowledge Store and **not** part of the upload router. The skill system is its own task (T7) — see [`../tasks/T7-mcp-client-and-skills.md`](../tasks/T7-mcp-client-and-skills.md) for the canonical spec.
 
 ### Indexing
 

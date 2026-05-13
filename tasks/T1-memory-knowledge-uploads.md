@@ -1,11 +1,13 @@
 # Phase 3 — T1 — Memory, Knowledge, Uploads (Overview)
 
+> **Status:** Complete on `main`. Keep this overview as the contract for the T1 baseline and for future regressions across T1A/T1B.
+
 T1 is the data spine the three agents read and write through. It splits cleanly into two parallelizable tracks with disjoint files and one schema-level coordination point.
 
 ## Tracks
 
-- **[T1A — Memory & Workspace State](phase-3-memory-and-state.md)** — Mastra `Memory` (working memory + Observational Memory), the `WorkspaceState` zod schema, and the role-guarded setter tools (`setBrief`, `setStyleContext`, `setSceneDesign`, `addAsset`). Owns `mastra/src/mastra/memory/`.
-- **[T1B — Knowledge Store & Uploads](phase-3-knowledge-and-uploads.md)** — `LibSQLVector` knowledge index, embedding pipeline, `retrieveProjectKnowledge` tool, and the synchronous `POST /uploads` route with per-type handlers. Owns `mastra/src/mastra/knowledge/` and `mastra/src/mastra/uploads/`.
+- **[T1A — Memory & Workspace State](T1A-memory-and-state.md)** — Mastra `Memory` (working memory + Observational Memory), the `WorkspaceState` zod schema, and the role-guarded setter tools (`setBrief`, `setStyleContext`, `setSceneDesign`, `addAsset`). Owns `mastra/src/mastra/memory/`.
+- **[T1B — Knowledge Store & Uploads](T1B-knowledge-and-uploads.md)** — `LibSQLVector` knowledge index, embedding pipeline, `retrieveProjectKnowledge` tool, and the synchronous `POST /uploads` route with per-type handlers. Owns `mastra/src/mastra/knowledge/` and `mastra/src/mastra/uploads/`.
 
 Each track has its own scope, files, env vars, and checkpoints. Read the track file for implementation detail.
 
@@ -35,8 +37,8 @@ If working solo: do T1A first end-to-end (checkpoints 1–2 green), then T1B (ch
 
 ## Reference
 
-- [`phase-3-memory-and-state.md`](phase-3-memory-and-state.md) — Track A spec
-- [`phase-3-knowledge-and-uploads.md`](phase-3-knowledge-and-uploads.md) — Track B spec
-- [`phase-3-planner-agent.md`](phase-3-planner-agent.md) — main consumer of memory helpers and `retrieveProjectKnowledge`
-- [`phase-3-art-director-agent.md`](phase-3-art-director-agent.md) — secondary retrieval consumer
-- [`phase-3-implementor-agent.md`](phase-3-implementor-agent.md) — pure consumer of working memory; gets neither setter tools nor retrieval
+- [`T1A-memory-and-state.md`](T1A-memory-and-state.md) — Track A spec
+- [`T1B-knowledge-and-uploads.md`](T1B-knowledge-and-uploads.md) — Track B spec
+- [`T2-planner-agent.md`](T2-planner-agent.md) — main consumer of memory helpers and `retrieveProjectKnowledge`
+- [`T3-art-director-agent.md`](T3-art-director-agent.md) — secondary retrieval consumer
+- [`T4-implementor-agent.md`](T4-implementor-agent.md) — pure consumer of working memory; gets neither setter tools nor retrieval

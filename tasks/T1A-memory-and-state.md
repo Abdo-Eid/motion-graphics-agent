@@ -2,7 +2,7 @@
 
 > **Status: Complete.** Backend layer implemented and verified.
 
-Track A of T1. Pairs with [`phase-3-knowledge-and-uploads.md`](phase-3-knowledge-and-uploads.md) (Track B). Both tracks share the spec overview in [`phase-3-memory-knowledge-uploads.md`](phase-3-memory-knowledge-uploads.md).
+Track A of T1. Pairs with [`T1B-knowledge-and-uploads.md`](T1B-knowledge-and-uploads.md) (Track B). Both tracks share the spec overview in [`T1-memory-knowledge-uploads.md`](T1-memory-knowledge-uploads.md).
 
 ## Your Role
 
@@ -208,9 +208,9 @@ Architectural caveat carried forward: `memoryTestAgent` exposes more setter tool
 
 ## Reference
 
-- [`phase-3-memory-knowledge-uploads.md`](phase-3-memory-knowledge-uploads.md) — overall T1 overview
-- [`phase-3-knowledge-and-uploads.md`](phase-3-knowledge-and-uploads.md) — Track B (consumes `addAsset` and `Asset` schema from here)
-- [`phase-3-planner-agent.md`](phase-3-planner-agent.md) — supervisor wiring + `delegation` hooks that invoke subagents using these helpers
+- [`T1-memory-knowledge-uploads.md`](T1-memory-knowledge-uploads.md) — overall T1 overview
+- [`T1B-knowledge-and-uploads.md`](T1B-knowledge-and-uploads.md) — Track B (consumes `addAsset` and `Asset` schema from here)
+- [`T2-planner-agent.md`](T2-planner-agent.md) — supervisor wiring + `delegation` hooks that invoke subagents using these helpers
 - Mastra Memory overview: <https://mastra.ai/docs/memory/overview>
 - Working memory (schema mode, scopes, readOnly): <https://mastra.ai/docs/memory/working-memory>
 - Observational Memory: <https://mastra.ai/docs/memory/observational-memory>

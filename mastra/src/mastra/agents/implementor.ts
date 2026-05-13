@@ -147,6 +147,6 @@ Returns a Markdown reply ending in a "## Summary" block. Does NOT write working 
   model: agentModel(),
   memory: readOnlyMemory,
   tools: {
-    // Sandbox tools will be added here in T4
+    // Sandbox tools will be added here in T7
   },
 });

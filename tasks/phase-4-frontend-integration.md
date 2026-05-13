@@ -111,7 +111,7 @@ If the workspace is empty (first session, before Implementor has written anythin
 
 - Drag-and-drop zone integrated into the chat panel (drop anywhere over the chat area).
 - Also: an explicit "+ Upload" button next to the chat input.
-- Submits multipart `POST /uploads` to the route built in `phase-3-knowledge-and-uploads.md`.
+- Submits multipart `POST /uploads` to the route built in `T1B-knowledge-and-uploads.md`.
 - Per-upload row in chat thread shows ingest status pulled from `upload.status` events: `pending` → `done` / `errored`. PDFs may take longer (chunk + embed); the row stays `pending` until the handler emits `done`.
 - On `done`, show a one-line confirmation (file name + how it was handled — "added as asset", "indexed for retrieval", "saved to uploads") so the user has feedback the system understood the file.
 
@@ -199,8 +199,8 @@ Then in the browser at `http://localhost:3000`:
 ## Reference
 
 - [`phase-2-frontend.md`](phase-2-frontend.md) — the shell this builds on
-- [`phase-3-planner-agent.md`](phase-3-planner-agent.md) — supervisor + delegation hooks + event bus that emit `agent.*` events
-- [`phase-3-memory-and-state.md`](phase-3-memory-and-state.md) — working memory + role-guarded helpers
-- [`phase-3-knowledge-and-uploads.md`](phase-3-knowledge-and-uploads.md) — upload route + asset folder layout
-- [`phase-3-mcp-client-and-skills.md`](phase-3-mcp-client-and-skills.md) — MCP client whose health drives the sandbox connection badge
-- [`phase-3-sandbox-service.md`](phase-3-sandbox-service.md) — workspace path the watcher and read-through routes target
+- [`T2-planner-agent.md`](T2-planner-agent.md) — supervisor + delegation hooks + event bus that emit `agent.*` events
+- [`T1A-memory-and-state.md`](T1A-memory-and-state.md) — working memory + role-guarded helpers
+- [`T1B-knowledge-and-uploads.md`](T1B-knowledge-and-uploads.md) — upload route + asset folder layout
+- [`T7-mcp-client-and-skills.md`](T7-mcp-client-and-skills.md) — MCP client whose health drives the sandbox connection badge
+- [`T6-sandbox-service.md`](T6-sandbox-service.md) — workspace path the watcher and read-through routes target

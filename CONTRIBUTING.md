@@ -10,7 +10,7 @@ This document is the **work board**: every task, what it depends on, whether you
 
 - Three Bun workspaces: `web/` (port 3000), `mastra/` (port 4111), `sandbox/` (port 4311)
 - Run everything: `bun run dev`. Run one: `bun run dev:web` / `dev:mastra` / `dev:sandbox`
-- Spec for every task lives in `tasks/phase-*.md`. **Read the spec before writing code.**
+- Spec for every task lives in `tasks/`. **Read the spec before writing code.**
 - Architecture rules that aren't negotiable: see `AGENTS.md` → "Architecture Constraints".
 - "Workspace" is overloaded in this repo (Workspace State, `sandboxRoot`, Bun workspaces, and Mastra Workspace are four different things). See `PROJECT_OVERVIEW.md` → "Terminology" before editing anything that mentions workspace.
 
@@ -32,7 +32,7 @@ This document is the **work board**: every task, what it depends on, whether you
 
 ## Phase Overview
 
-For the canonical phase walkthrough (what each phase builds, the checkpoint that proves it, and the per-phase commands), see [`docs/SETUP_GUIDE.md`](docs/SETUP_GUIDE.md). Status snapshot: Phase 1 (scaffold) and Phase 2 (frontend shell, static + mock data) are done; Phase 3 (Mastra backend, sandbox, MCP) is the active work; Phase 4 wires the static shell to the live backend.
+For the canonical phase walkthrough (what each phase builds, the checkpoint that proves it, and the per-phase commands), see [`docs/SETUP_GUIDE.md`](docs/SETUP_GUIDE.md). Status snapshot: Phase 1 (scaffold) and Phase 2 (frontend shell, static + mock data) are done; Phase 3's completed baseline on `main` includes T1 Memory/Knowledge/Uploads plus the core agent layer (T2 Planner, T3 Art Director, T4 Implementor); the remaining active work is T6/T7 plus Phase 4 frontend integration.
 
 > **Phase 2 status note.** The shell is built. `web/src/` already has `chat-panel.tsx`, `player-panel.tsx`, `agent-log.tsx`, `bottom-panel.tsx`, `topbar.tsx`, `mock-product-tour.tsx`, plus mock fixtures in `web/src/data/mock-data.ts`. Phase 4 replaces the mock data sources with real backend wiring — it does **not** rebuild the components.
 
@@ -89,15 +89,15 @@ What's sequential:
 
 Each card: **what · who can start · prereqs · files · how to begin · checkpoint**.
 
-### T1 — Memory, Knowledge Store, Uploads
+### T1 — Memory, Knowledge Store, Uploads · complete
 
-T1 splits into two parallelizable tracks. Overview lives in `tasks/phase-3-memory-knowledge-uploads.md`. Each track has its own spec, files, env vars, and checkpoints.
+T1 splits into two parallelizable tracks. Overview lives in `tasks/T1-memory-knowledge-uploads.md`. Each track has its own spec, files, env vars, and checkpoints.
 
 #### T1A — Memory & Workspace State
 
-- **Spec**: `tasks/phase-3-memory-and-state.md`
+- **Spec**: `tasks/T1A-memory-and-state.md`
 - **What**: Workspace State as Mastra working memory (zod schema + role-guarded setter tools `setBrief` / `setStyleContext` / `setSceneDesign` / `addAsset`); conversation history compressed by Mastra's Observational Memory (no hand-rolled summarizer).
-- **Start now?** Yes. No prereqs.
+- **Status**: Complete on `main`.
 - **Files** (all new): `mastra/src/mastra/memory/{schema,index,access}.ts`.
 - **Begin**: lock the `Asset` zod shape with the T1B owner first, then scaffold `memory/schema.ts` and `memory/index.ts` (configured `Memory` instance with working memory + observational memory). Wire `setBrief` end-to-end before adding the rest.
 - **Checkpoint**: memory roundtrip + role rejection, conversation compression with brief surviving.
@@ -105,9 +105,9 @@ T1 splits into two parallelizable tracks. Overview lives in `tasks/phase-3-memor
 
 #### T1B — Knowledge Store & Uploads
 
-- **Spec**: `tasks/phase-3-knowledge-and-uploads.md`
+- **Spec**: `tasks/T1B-knowledge-and-uploads.md`
 - **What**: Project Knowledge Store (`LibSQLVector` + `MDocument` chunker via `@mastra/rag` + `embedMany` embeddings + `retrieveProjectKnowledge` tool); upload pipeline (`POST /uploads` + per-type handlers registered as Mastra `apiRoutes`).
-- **Start now?** Yes — runs in parallel with T1A. Both tracks now landed.
+- **Status**: Complete on `main`.
 - **Files** (all new): `mastra/src/mastra/knowledge/{store,ingest-text,retrieve}.ts`, `mastra/src/mastra/uploads/{router,ingest}.ts`, `mastra/src/mastra/uploads/handlers/{pdf,text,csv,image}.ts`, `mastra/src/mastra/sandbox-root.ts`. Adds `@mastra/rag`, `pdf-parse`, and `ai` to `mastra/package.json`; embeddings use Track A's shared `embeddingModel()` from `mastra/src/mastra/model.ts`.
 - **Begin**: lock the `Asset` zod shape with T1A first, then build `knowledge/store.ts` + `ingest-text.ts` against a small fixture (no hand-rolled chunker — use `MDocument.chunk()`), then the upload router with handlers in order text/pdf → csv → image. Image handler imports `appendAsset` (the role-skip impl) from `memory/access.ts`, not the `addAsset` tool.
 - **Checkpoint**: PDF upload → chunks in Knowledge Store, image asset → `Asset` row + file copy, CSV → file copy.
@@ -117,32 +117,32 @@ T1 splits into two parallelizable tracks. Overview lives in `tasks/phase-3-memor
 
 Wire both outputs into `mastra/src/mastra/index.ts`: `new Mastra({ storage, agents: { ... }, memory: { workspace: memory }, server: { apiRoutes: uploadRoutes } })`. Tools live on agents, not on the root `Mastra`. The `workspace` key in the `memory` registry is just a Mastra identifier — not `@mastra/core/workspace`.
 
-### T2 — Planner Agent (Supervisor) + Subagent Delegation
+### T2 — Planner Agent (Supervisor) + Subagent Delegation · complete
 
-- **Spec**: `tasks/phase-3-planner-agent.md`
+- **Spec**: `tasks/T2-planner-agent.md`
 - **What**: Two pieces shipped together. (a) The Planner agent — Mastra **supervisor** that owns user conversation, clarification, brief, routing classification, and dispatches subagents via the auto-generated `agent-artDirector` / `agent-implementor` tools (Mastra creates these from the Planner's `agents: { ... }` list). (b) A tiny in-process event bus (`server/bus.ts`) consumed by the Phase 4 SSE route, fed by the Planner's `delegation` hooks. Routing rules live in the Planner's instructions, not in code. No hand-rolled delegation tools.
-- **Start now?** Wires last — needs T1 (memory helpers + retrieval) and T3/T4 (subagents to dispatch into). Skeleton instructions and the bus can be drafted in parallel with everything else.
+- **Status**: Complete on `main`.
 - **Files**: `mastra/src/mastra/agents/planner.ts`, `mastra/src/mastra/server/bus.ts`, `mastra/src/mastra/index.ts` (modify — register all three agents). No `delegations.ts` — Mastra auto-generates the subagent tools from the Planner's `agents: { ... }` list.
 - **Begin**: build the bus first (10 lines around `EventEmitter`), then the Planner agent with the routing table inline in its `instructions` and the two subagents wired in via `agents: { artDirector, implementor }`. Add `delegation` hooks (`onDelegationStart` / `onDelegationComplete`) that emit `agent.start` / `agent.end` on the bus and enforce the in-flight invariants. Register all three agents in `index.ts` to unlock the Phase 3 base checkpoint.
 - **Checkpoint**: `POST /chat/plannerAgent` with a full prompt produces `agent-artDirector` and `agent-implementor` tool calls in the trace; with a tweak prompt, only `agent-implementor` fires. Bus emits matching `agent.start` / `agent.end`.
 - **Docs**: <https://mastra.ai/docs/agents/supervisor-agents>, <https://mastra.ai/docs/agents/using-tools#agents-as-tools>, <https://mastra.ai/guides/migrations/network-to-supervisor>.
 
-### T3 — Art Director Agent
+### T3 — Art Director Agent · complete
 
-- **Spec**: `tasks/phase-3-art-director-agent.md`
+- **Spec**: `tasks/T3-art-director-agent.md`
 - **What**: Creative-design agent. Brief → per-scene design (composition, hierarchy, animation feel, transitions, acceptance criteria). Owns `styleContext` and `sceneRegistry[n].design`. No code, no sandbox tools, no Remotion API names.
-- **Start now?** After T1. Independent of T2/T4.
+- **Status**: Complete on `main`.
 - **Files**: `mastra/src/mastra/agents/art-director.ts` (new), `mastra/src/mastra/index.ts` (modify).
 - **Begin**: write the `instructions` to enforce feel-based language, attach `setStyleContext` + `setSceneDesign` helpers + `retrieveProjectKnowledge`.
 - **Checkpoint**: `POST /chat/art-director-agent` produces scene designs without any `useCurrentFrame`/`spring` references.
 
-### T4 — Implementor Agent
+### T4 — Implementor Agent · complete
 
-- **Spec**: `tasks/phase-3-implementor-agent.md`
-- **What**: Execution agent. Reads scene design + styleContext, writes Remotion code, runs typecheck, fixes errors, updates scene status. **Only agent that gets sandbox tools.**
-- **Start now?** Skeleton can start after T1. Tools wire up needs T6 (sandbox) + T7 (MCP client). Until then the agent answers descriptively, which is fine.
+- **Spec**: `tasks/T4-implementor-agent.md`
+- **What**: Execution agent. Reads scene design + styleContext, writes Remotion code, runs typecheck, and fixes errors. **Only agent that gets sandbox tools once T7 lands.**
+- **Status**: Complete on `main` for the pre-MCP skeleton. Tools wire-up still belongs to T7, so the current agent answers descriptively when sandbox tools are absent.
 - **Files**: `mastra/src/mastra/agents/implementor.ts` (new), `mastra/src/mastra/index.ts` (modify).
-- **Begin**: write `instructions` covering the Remotion conventions in the spec, then add the scene-status helpers from T1. Defer tool attachment to T7.
+- **Begin**: write `instructions` covering the Remotion conventions in the spec, configure the agent as a read-only consumer of working memory, and defer tool attachment to T7.
 - **Checkpoint**: with sandbox + MCP wired, asks Implementor to list workspace and run `node --version` → it actually invokes `list_files` and `exec_command`.
 - **Docs**: <https://www.remotion.dev/docs>, <https://mastra.ai/docs/tools-mcp/mcp-overview>.
 
@@ -150,7 +150,7 @@ Wire both outputs into `mastra/src/mastra/index.ts`: `new Mastra({ storage, agen
 
 ### T6 — Sandbox Service
 
-- **Spec**: `tasks/phase-3-sandbox-service.md` · **Design**: `docs/local-sandbox-service-design.md`
+- **Spec**: `tasks/T6-sandbox-service.md` · **Design**: `docs/local-sandbox-service-design.md`
 - **What**: Standalone Bun process at port 4311 exposing Mastra `MCPServer` over HTTP. Implements `read_file`, `write_file`, `edit_file`, `list_files`, `grep`, `exec_command`, `exec_background`, `check_background`, `kill_background`, `run_typecheck`, `list_skills`, `load_skill`. All paths sandboxed under the resolved workspace dir (`WORKSPACE_PATH` env or the file-anchored default) via a path guard.
 - **Start now?** Yes — fully independent. Doesn't import from `mastra/`.
 - **Files** (all new under `sandbox/`): `src/index.ts`, `src/server.ts`, `src/provider/{local-provider,path-guard,exec,background}.ts`, `src/tools/{read-file,write-file,edit-file,list-files,grep,exec-command,exec-background,check-background,kill-background,run-typecheck,list-skills,load-skill}.ts`. Replace the placeholder `sandbox/src/index.ts`.
@@ -160,7 +160,7 @@ Wire both outputs into `mastra/src/mastra/index.ts`: `new Mastra({ storage, agen
 
 ### T7 — MCP Client + Skills v1
 
-- **Spec**: `tasks/phase-3-mcp-client-and-skills.md`
+- **Spec**: `tasks/T7-mcp-client-and-skills.md`
 - **What**: Two pieces shipped together. (a) `MCPClient` in main app pointing at `SANDBOX_MCP_URL`, attaches discovered tools to Implementor only, fails soft if sandbox is down. (b) Five skill markdown docs under `sandbox/skills/`: `remotion-basics.md`, `transitions.md`, `kinetic-typography.md`, `logo-reveal.md`, `chart-animation.md`.
 - **Start now?**
   - Skill markdown content: yes, anytime. Pure writing, no code dep.

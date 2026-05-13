@@ -24,4 +24,4 @@ See [`docs/local-sandbox-service-design.md`](../docs/local-sandbox-service-desig
 
 ## Scaffolding Status
 
-This package is scaffolded but not yet implemented. Follow [`tasks/phase-3-sandbox-service.md`](../tasks/phase-3-sandbox-service.md) to fill it in.
+This package is scaffolded but not yet implemented. Follow [`tasks/T6-sandbox-service.md`](../tasks/T6-sandbox-service.md) to fill it in.

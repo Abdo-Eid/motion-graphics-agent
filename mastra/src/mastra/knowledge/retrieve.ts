@@ -1,7 +1,7 @@
-﻿/**
+/**
  * `retrieveProjectKnowledge` — the only read path into the Knowledge Store.
  *
- * Architecture rule (AGENTS.md / phase-3-memory-knowledge-uploads.md):
+ * Architecture rule (AGENTS.md / T1-memory-knowledge-uploads.md):
  *   This tool is attached ONLY to the Planner and the Art Director.
  *   The Implementor must NEVER receive it — Implementor reads Workspace State
  *   and skill docs only. Wiring it onto the Implementor breaks the agent

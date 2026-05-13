@@ -252,7 +252,7 @@ When the supervisor LLM calls one of these tools, Mastra runs `subagent.generate
 
 The Planner can call these tools in **parallel** for the lockstep pipeline (Implementor on scene `n` ∥ Art Director on scene `n+1`) — Mastra dispatches parallel tool calls concurrently. Field ownership is still enforced: the role-guarded helpers in `mastra/src/mastra/memory/access.ts` reject any wrong-role write, regardless of who calls them.
 
-See [`tasks/phase-3-planner-agent.md`](tasks/phase-3-planner-agent.md) for the supervisor wiring, `delegation` hooks, and pipeline invariants.
+See [`tasks/T2-planner-agent.md`](tasks/T2-planner-agent.md) for the supervisor wiring, `delegation` hooks, and pipeline invariants.
 
 ### Project State Layers
 
@@ -279,7 +279,7 @@ Holds the live state of the project as Mastra **working memory** (zod schema, th
 - **`sceneRegistry[n].design`** — per-scene creative direction. Owned by the Art Director. Schema deliberately holds only `{ number, name, design }` — no status, no file paths, no errors.
 - **`assets[]`** — uploaded image and font assets as `{ id, path, description }`. Written by the upload handler.
 
-Workspace State is small, structured, and mutable. Scene build status, source file paths, and build errors are **not** persisted here — they live in the subagent's `## Summary` reply (read by the Planner that turn) and on the filesystem under `<workspace>/src/` (consumed by the Phase 4 read-through routes). Canonical schema: [`tasks/phase-3-memory-and-state.md`](tasks/phase-3-memory-and-state.md).
+Workspace State is small, structured, and mutable. Scene build status, source file paths, and build errors are **not** persisted here — they live in the subagent's `## Summary` reply (read by the Planner that turn) and on the filesystem under `<workspace>/src/` (consumed by the Phase 4 read-through routes). Canonical schema: [`tasks/T1A-memory-and-state.md`](tasks/T1A-memory-and-state.md).
 
 #### Project Knowledge Store
 
