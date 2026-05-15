@@ -92,7 +92,7 @@ The Art Director reads `brief` from working memory. If a specific design fact is
 
 ### Step 6: Implementor
 
-The Implementor has no retrieval tool and no memory-write tools. It reads `styleContext` and `sceneRegistry[n].design` from working memory (read-only) and runs the sandbox MCP tools to produce code. The brand guide is invisible to it; everything it needs is already distilled into the design.
+The Implementor has no retrieval tool and no memory-write tools. It reads `styleContext` and `sceneRegistry[n].design` from working memory (read-only) and runs Workspace tools to produce code. The brand guide is invisible to it; everything it needs is already distilled into the design.
 
 ### Step 7: Follow-Up Edits
 
@@ -135,11 +135,11 @@ That's it. No row, no Knowledge Store entry, no working-memory write.
 
 ### Step 3: Implementor Operates On The File If Needed
 
-If a downstream scene needs to derive a fact from the CSV, the Planner instructs the Implementor in natural language ("read `uploads/<file>.csv` and chart the monthly average"). The Implementor uses sandbox tools (`read_file`, `exec_command`) to parse and compute inside the sandbox. Any derived facts it needs to surface end up in the rendered video, not in working memory.
+If a downstream scene needs to derive a fact from the CSV, the Planner instructs the Implementor in natural language ("read `uploads/<file>.csv` and chart the monthly average"). The Implementor uses Workspace tools (`read_file`, `exec_command`) to parse and compute locally. Any derived facts it needs to surface end up in the rendered video, not in working memory.
 
 ### Why This Path
 
-CSV is structured data — embedding raw rows for vector search produces poor results and wastes tokens. Real analysis is a code-execution problem, which the Implementor already has via sandbox tools. T1 deliberately stops at "make the file reachable to the sandbox."
+CSV is structured data — embedding raw rows for vector search produces poor results and wastes tokens. Real analysis is a code-execution problem, which the Implementor already has via Workspace tools. T1 deliberately stops at "make the file reachable in the workspace."
 
 A more sophisticated CSV pipeline (parse-to-SQLite, schema-aware queries, derived-facts in Workspace State) is plausible later; it is **not part of T1**.
 
@@ -147,7 +147,7 @@ A more sophisticated CSV pipeline (parse-to-SQLite, schema-aware queries, derive
 
 - File is copied to `uploads/`, never embedded, never parsed by the upload handler.
 - No `Asset` row is created (CSVs aren't reusable visual assets).
-- The Implementor reads the raw file in the sandbox if a scene calls for it.
+- The Implementor reads the raw file from the workspace if a scene calls for it.
 
 ---
 
@@ -205,7 +205,7 @@ logo-dark.png
 
 - **Planner** sees `assets[]` in working memory and references the asset by id when writing the brief.
 - **Art Director** uses asset ids in scene designs ("scene 5: full-bleed reveal of asset `<id>`").
-- **Implementor** reads `Asset.path` from working memory and includes the file in the Remotion code via the sandbox.
+- **Implementor** reads `Asset.path` from working memory and includes the file in the Remotion code via Workspace tools.
 
 The image is never re-embedded, never re-described, never re-uploaded.
 
@@ -254,7 +254,7 @@ ingest.ts → detectHandlerKind() returns null
 |---|---|---|---|
 | PDF / large doc | `pdf.ts` → `ingest-text.ts` | Knowledge Store (chunks) | On demand via `retrieveProjectKnowledge` |
 | Markdown / text | `text.ts` → `ingest-text.ts` | Knowledge Store (chunks) | On demand via `retrieveProjectKnowledge` |
-| CSV | `csv.ts` | `<workspace>/uploads/<id>.csv` | No (sandbox reads file directly when needed) |
+| CSV | `csv.ts` | `<workspace>/uploads/<id>.csv` | No (Implementor reads file directly when needed) |
 | Image, `kind=asset` | `image.ts` (asset branch) | `<workspace>/assets/` + `Asset` row in working memory | No |
 | Image, `kind=reference` | `image.ts` (reference branch) | Conversation message for that turn only | Not applicable |
 | Font (`.ttf`, `.otf`, `.woff*`), video, audio, archive | (rejected) | nothing | nothing — `415` returned |

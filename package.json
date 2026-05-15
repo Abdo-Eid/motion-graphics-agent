@@ -5,22 +5,17 @@
     "private": true,
     "workspaces": [
         "web",
-        "mastra",
-        "sandbox"
+        "mastra"
     ],
     "scripts": {
-        "dev": "bun run dev:sandbox & bun run dev:mastra & bun run dev:web",
+        "dev": "bun run dev:mastra & bun run dev:web",
         "dev:web": "cd web && bun --env-file=../.env run dev",
-        "dev:mastra": "cd mastra && bun --env-file=../.env run dev",
-        "dev:sandbox": "cd sandbox && bun --env-file=../.env run dev"
+        "dev:mastra": "cd mastra && bun --env-file=../.env run dev"
     },
     "devDependencies": {
         "@types/bun": "latest"
     },
     "peerDependencies": {
         "typescript": "^5"
-    },
-    "dependencies": {
-        "@mastra/mcp": "^1.7.0"
     }
 }

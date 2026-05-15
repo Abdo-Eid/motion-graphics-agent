@@ -2,26 +2,26 @@
 
 A multi-agent system for turning user prompts into editable Remotion code with a live preview.
 
-The architecture is a supervisor + two subagents:
+The architecture is a Mastra supervisor plus two subagents:
 
 ```text
 Planner (supervisor) ──▶ agent-artDirector ──▶ Art Director
                     └──▶ agent-implementor ──▶ Implementor
 ```
 
-- **Planner** owns the user conversation, classifies intent, produces the brief, **and dispatches** the other agents through subagent tools.
-- **Art Director** (subagent) turns the brief into scene-by-scene creative direction.
-- **Implementor** (subagent) uses sandbox tools to write Remotion code, styling, animations, and transitions in one pass.
+- **Planner** owns the user conversation, classifies intent, produces the brief, and dispatches the other agents through subagent tools.
+- **Art Director** turns the brief into scene-by-scene creative direction.
+- **Implementor** uses Mastra Workspace tools to write Remotion code, styling, animations, and transitions.
 
-There is no separate orchestration layer — the routing rules live in the Planner's system prompt. The frontend provides chat, preview, activity, and file inspection. The backend runs Mastra agents. Code execution happens in a local Bun sandbox process exposed through MCP/HTTP — no Docker.
+There is no separate orchestration layer and no second execution service. The routing rules live in the Planner's system prompt. The frontend provides chat, preview, activity, and file inspection. The Mastra server owns agents, memory, uploads, workspace tools, and generated project files.
 
 ## How It Works
 
 1. The user describes a video goal.
-2. The **Planner** asks clarifying questions if needed, produces a structured brief, and decides how to delegate.
+2. The Planner asks clarifying questions if needed, produces a structured brief, and decides how to delegate.
 3. For creative or structural work the Planner calls `agent-artDirector`, which produces scene designs and updates shared style context.
-4. The Planner then calls `agent-implementor` (per scene, optionally in parallel via Mastra's parallel tool calls). The Implementor reads scene designs, writes Remotion code in the sandbox, runs typecheck, and fixes errors.
-5. The frontend syncs the generated files for a live Remotion preview.
+4. The Planner then calls `agent-implementor`. The Implementor reads scene designs, writes Remotion code through Mastra Workspace tools, runs checks, and fixes errors.
+5. The frontend reads workspace files through Mastra routes and reloads the preview when files change.
 
 For small follow-up edits, the Planner skips the Art Director and calls the Implementor directly.
 
@@ -35,57 +35,47 @@ Vite + React (:3000)            Mastra Server (:4111)
 |- Chat panel                   |- Planner (supervisor)
 |- Remotion <Player>            |- Art Director (subagent)
 |- Agent activity log           |- Implementor (subagent)
-`- File tree viewer             `- Memory + Knowledge + Event bus
-                                     |
-                                     v
-                            Sandbox Service (:4311)
-                            |- Local Bun process
-                            |- MCP server over HTTP (read/edit/exec tools)
-                            |- Remotion project scaffold (.workspace/)
-                            `- Skills (skills/*.md)
+`- File tree viewer             |- Memory + Knowledge + Event bus
+                                 `- Mastra Workspace tools
+                                      |- LocalFilesystem
+                                      |- LocalSandbox
+                                      `- .workspace/
 ```
 
-- **Frontend** streams from Mastra with `useChat()`. It does not call an LLM directly.
-- **Mastra** hosts the agents, memory, and the event bus. Dispatch happens inside the Planner via subagent tool calls.
-- **Sandbox + MCP** is the execution boundary for file reads, edits, and verification — a separate Bun process, no Docker.
+- **Frontend** streams from Mastra and never calls an LLM directly.
+- **Mastra** hosts the agents, memory, uploads, event bus, workspace routes, and execution tools.
+- **Mastra Workspace** is the execution layer for file reads, edits, grep/search, and command execution. Only the Implementor gets those tools.
 
 ## Tech Stack
 
-Vite + React frontend, Mastra agent server, local Bun sandbox over MCP/HTTP, LibSQL persistence, Remotion preview. For the canonical tech stack table with doc links, see [`AGENTS.md`](AGENTS.md#tech-stack-quick-reference).
+Vite + React frontend, Mastra agent server, Mastra Workspace tools, LibSQL persistence, Remotion preview, Bun workspaces. For the canonical tech stack table with doc links, see [`AGENTS.md`](AGENTS.md#tech-stack-quick-reference).
 
 ## Project Structure
 
 ```text
 motion-graphics-agent/
 |- web/                        Vite + React frontend
-|  |- src/routes/              App routes
 |  |- src/components/          UI components
 |  `- README.md                Frontend-specific notes
 |- mastra/                     Mastra server
 |  |- src/mastra/
 |  |  |- agents/               planner, art-director, implementor
+|  |  |- memory/               Workspace State
+|  |  |- uploads/              upload route + handlers
 |  |  `- index.ts              Mastra registration
+|  |- .workspace/              gitignored generated project files
 |  `- README.md                Backend-specific notes
-|- sandbox/                    Local Bun sandbox service
-|  |- src/
-|  |  |- index.ts              MCPServer over HTTP
-|  |  |- provider/             LocalProvider (fs + child_process)
-|  |  `- tools/                read_file, write_file, exec_command, ...
-|  |- .workspace/              gitignored, generated project files
-|  `- skills/                  markdown skill docs
 |- docs/
 |  |- architecture.md
-|  |- SETUP_GUIDE.md
-|  |- local-sandbox-service-design.md
 |  |- project-knowledge-and-skills.md
-|  |- upload-walkthroughs.md
-|  |- learning/
-|  `- reference/                Historical / external reference material
+|  `- upload-walkthroughs.md
 `- tasks/
-   |- phase-2-frontend.md
+   |- T1-memory-knowledge-uploads.md
    |- T2-planner-agent.md
    |- T3-art-director-agent.md
-   `- T4-implementor-agent.md
+   |- T4-implementor-agent.md
+   |- T5-workspace-tools-and-skills.md
+   `- phase-4-frontend-integration.md
 ```
 
 ## Getting Started
@@ -94,15 +84,17 @@ motion-graphics-agent/
 
 - [Bun](https://bun.sh)
 - Node.js 22.13+ (Mastra requirement)
-- An API key for an [AI SDK provider](https://sdk.vercel.ai) reachable via Mastra's [model router](https://mastra.ai/models)
+- Azure OpenAI environment variables used by `mastra/src/mastra/model.ts`
 
-No Docker required.
+No Docker and no second execution process are required.
 
 ### Environment
 
 Copy `.env.example` to `.env` at the repo root and fill in the empty values.
 
-The LibSQL DB path is **not** an env var — both Memory and the Knowledge Store pin `file:./mastra.db` (resolves to `mastra/mastra.db`).
+The LibSQL DB path is not an env var. Memory and the Knowledge Store pin `file:./mastra.db`, which resolves to `mastra/mastra.db` when Mastra runs from the `mastra/` workspace.
+
+`WORKSPACE_PATH` is optional. If unset, generated files live under the Mastra workspace's default local `.workspace` directory.
 
 ### Development
 
@@ -116,27 +108,22 @@ Useful commands:
 ```bash
 bun run dev:web      # http://localhost:3000
 bun run dev:mastra   # http://localhost:4111
-bun run dev:sandbox  # http://localhost:4311
 ```
 
 ## Documentation
 
-| Document                                                                       | Description                                                                               |
-| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md)                                   | Product vision, architecture, agent responsibilities                                      |
-| [`AGENTS.md`](AGENTS.md)                                                       | Rules for AI coding agents working in this repo                                           |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md)                                           | Task board, dependency graph, suggested allocation                                        |
-| [`docs/SETUP_GUIDE.md`](docs/SETUP_GUIDE.md)                                   | Phase-by-phase setup and implementation checkpoints                                       |
-| [`docs/architecture.md`](docs/architecture.md)                                 | Architecture details, routing rules, memory structures                                    |
+| Document | Description |
+|---|---|
+| [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md) | Product vision, architecture, agent responsibilities |
+| [`AGENTS.md`](AGENTS.md) | Rules for AI coding agents working in this repo |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Task board, dependency graph, suggested allocation |
+| [`docs/architecture.md`](docs/architecture.md) | Architecture details, routing rules, memory structures |
 | [`docs/project-knowledge-and-skills.md`](docs/project-knowledge-and-skills.md) | State-layer principles, retrieval rules, agent responsibilities, and staged skill loading |
-| [`docs/upload-walkthroughs.md`](docs/upload-walkthroughs.md)                   | End-to-end ingest traces per file type (PDF, CSV, image, font)                            |
-| [`docs/local-sandbox-service-design.md`](docs/local-sandbox-service-design.md) | Local Bun sandbox + MCP design (no Docker)                                                |
+| [`docs/upload-walkthroughs.md`](docs/upload-walkthroughs.md) | End-to-end ingest traces per file type |
 
 ## Status
 
-Phase 1 (monorepo scaffold) and Phase 2 (frontend shell, static) are done. Phase 3 (backend) is in progress — see `CONTRIBUTING.md`.
-
-`docs/reference/` contains historical and external reference material and is intentionally frozen.
+The backend agent baseline is in place. Current direction is to run execution inside the Mastra server using Mastra Workspace tools.
 
 ## License
 

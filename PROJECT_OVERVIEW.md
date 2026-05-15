@@ -2,13 +2,9 @@
 
 ## Executive Summary
 
-Motion Graphics Agent is a web app that turns a text prompt into a video project you can edit.
+Motion Graphics Agent is a web app that turns a text prompt into an editable Remotion video project.
 
-You describe the video you want. The system plans the story, designs the scenes, writes the code, checks that it works, and shows you a live preview.
-
-It is built for short product videos, demos, explainer clips, and screen recordings.
-
-The output is not just a video file. It is real TypeScript and Remotion source code. That means the video can be opened, changed, saved to version control, and improved over time.
+You describe the video you want. The system plans the story, designs the scenes, writes the code, checks that it works, and shows a live preview.
 
 The system works in four steps:
 
@@ -16,16 +12,16 @@ The system works in four steps:
 Planner -> Art Director -> Implementor -> Preview
 ```
 
-- **Planner** — understands what the user wants and creates a clear brief.
-- **Art Director** — turns the brief into scene-by-scene creative direction.
-- **Implementor** — writes the Remotion code based on that direction.
-- **Preview** — shows the result and supports fast changes.
+- **Planner** understands what the user wants and creates a clear brief.
+- **Art Director** turns the brief into scene-by-scene creative direction.
+- **Implementor** writes the Remotion code based on that direction.
+- **Preview** shows the result and supports fast changes.
 
-For users, it feels like a chat-based video editor. For builders, it is a clear system with separate agents, shared memory, a retrieval layer, a sandboxed code runner, and a live preview.
+For users, it feels like a chat-based video editor. For builders, it is a Mastra app with separate agents, shared memory, retrieval, Workspace-backed execution tools, and a live preview.
 
 ## Product Vision
 
-Making a product video normally requires writing, design, animation, and frontend skills. Motion Graphics Agent brings all of that into one guided workflow.
+Making a product video normally requires writing, design, animation, and frontend skills. Motion Graphics Agent brings that into one guided workflow.
 
 The goal is not just to generate a video once. It is to support an ongoing creative process. The user can say things like:
 
@@ -35,7 +31,7 @@ The goal is not just to generate a video once. It is to support an ongoing creat
 - "Shorten scene two."
 - "Fix the issue in the preview."
 
-The system tracks the current project state and sends each request to the right part of the pipeline. A small tweak goes straight to code. A creative change goes through design first. A code error goes directly to the implementor to fix.
+The system tracks current project state and sends each request to the right part of the pipeline. A small tweak goes straight to code. A creative change goes through design first. A code error goes directly to the Implementor.
 
 ## What The Product Does
 
@@ -45,446 +41,154 @@ It supports:
 
 - Chat-based video creation.
 - Asking follow-up questions when details are missing.
-- Planning the audience, tone, length, assets, and key messages.
-- Designing scenes before writing any code.
+- Planning audience, tone, length, assets, and key messages.
+- Designing scenes before writing code.
 - Generating editable Remotion components.
 - A live preview of the current video.
-- A file viewer so users can inspect the generated code.
+- A file viewer so users can inspect generated code.
 - Follow-up edits through natural language.
-- Sandboxed code execution to verify the output before showing it.
+- Local code execution to verify output before showing it.
 
 The MVP focuses on short product videos and screen recordings. It does not try to solve complex 3D, advanced audio, or long-form editing.
 
-## Product Users
-
-Motion Graphics Agent is built for people who need to create product videos but do not want to learn animation code or Remotion.
-
-Users should be able to describe the video, upload brand materials, review the preview, and ask for changes — all in plain language. They do not need to know how the system works under the hood.
-
-Typical users:
-
-- Startup founders making launch videos.
-- Product marketers making feature demos.
-- Designers exploring motion ideas.
-- Educators or technical writers making short explainer videos.
-
-## Technical Stakeholders And Builders
-
-The product is aimed at non-technical users, but developers and architects are also an important audience — they will build, maintain, and extend the system.
-
-The key point for technical readers: Motion Graphics Agent is not a black box. It produces editable source code, keeps planning and design separate from implementation, runs generated code inside a sandbox, and tracks project state explicitly.
-
-Use this document to understand:
-
-- How the user workflow maps to backend agents.
-- Where each step — planning, design, implementation, verification, preview — happens.
-- Which component owns which responsibility.
-- How to extend the system without merging everything into one agent.
-
 ## Architecture Overview
 
-Motion Graphics Agent is organized as a monorepo with three major runtime areas:
+Motion Graphics Agent is organized as a monorepo with two runtime areas:
 
 - Frontend web application.
-- Backend agent server.
-- Local sandbox service for code execution and verification (a separate Bun process, no Docker).
+- Mastra backend agent server.
 
-The architecture separates user experience, agent reasoning, and code execution into different layers. This keeps responsibilities clear and reduces risk.
+The Mastra server owns agents, memory, retrieval, uploads, workspace file access, and command execution.
 
-```
-                              ┌─────────────────────────────────────────────┐
-                              │                   User                      │
-                              └───────────────────────┬─────────────────────┘
-                                                      │ prompt / files
-                                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          Frontend Web App                                   │
-│    ┌────────────┐   ┌──────────────┐   ┌─────────────────┐   ┌───────────┐  │
-│    │    Chat    │   │ Live Preview │   │ Agent Activity  │   │   Files   │  │
-│   └ ────────────┘   └──────────────┘   └─────────────────┘   └───────────┘  │
-└───────────────────────────────────────────┬─────────────────────────────────┘
-                                            │ stream / status
-                                            ▼
-┌────────────────────────────────────────────────────────────────────────────┐
-│                        Backend Agent Server                                │
-│   ┌──────────────┐      ┌──────────────┐      ┌─────────────┐             │
-│   │   Planner    │─────▶│ Art Director │─────▶│ Implementor │             │
-│   │ (supervisor) │      │  (subagent)  │      │ (subagent)  │             │
-│   └──────────────┘      └──────────────┘      └─────────────┘             │
-│   ┌────────────────────────────────────┐   ┌──────────────────────────┐   │
-│   │  Memory + Knowledge + Event Bus    │   │  MCP client to sandbox   │   │
-│   └────────────────────────────────────┘   └──────────────────────────┘   │
-└──────────────────────────────────────────┬─────────────────────────────────┘
-                                           │ file / verify tools
-                                           ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                Local Sandbox Service (separate Bun process, MCP/HTTP)       │
-│   ┌──────────┐   ┌──────────────┐   ┌──────────────┐   ┌────────────────┐   │
-│   │  Files   │   │    Skills    │   │  Typecheck   │   │   Remotion     │   │
-│   │  (R/W)   │   │  (on-demand) │   │   / Render   │   │   Workspace    │   │
-│   └──────────┘   └──────────────┘   └──────────────┘   └────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────────┘
+```text
+                              User
+                               |
+                               v
+┌─────────────────────────────────────────────────────────────────┐
+│                       Frontend Web App                          │
+│      Chat      Live Preview      Agent Activity      Files       │
+└───────────────────────────────┬─────────────────────────────────┘
+                                │ stream / status / uploads
+                                v
+┌─────────────────────────────────────────────────────────────────┐
+│                       Mastra Agent Server                       │
+│   Planner ──▶ Art Director ──▶ Implementor                      │
+│      │             │              │                             │
+│      └──── Memory + Knowledge + Event Bus ─────┐                │
+│                                                │                │
+│                         Mastra Workspace tools │                │
+│                         LocalFilesystem + LocalSandbox          │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-The frontend never calls the AI model directly. It streams messages and status updates from the backend. The backend owns the agents, memory, retrieval, and model calls. The sandbox is the controlled environment where generated code is read, written, and verified.
+The frontend never calls the AI model directly. It streams messages and status updates from the backend. The backend owns model calls, agent routing, project state, file access, and verification.
 
 ## Terminology
 
-The word "workspace" is overloaded in this codebase. Three distinct things use the word; they are not the same.
+The word "workspace" is overloaded. These are the important meanings:
 
 | Term | What it is | Where it lives |
 |---|---|---|
-| **Workspace State** | The repo's name for structured project state (`brief`, `styleContext`, `sceneRegistry`, `assets`). Implemented as Mastra **working memory** with a zod schema, thread-scoped per project. | `mastra/src/mastra/memory/` |
-| **`sandboxRoot`** | A filesystem directory shared between the Mastra server (upload handlers, Phase 4 read-through routes) and the Bun sandbox MCP service. Default: `<repo>/sandbox/.workspace`. | `mastra/src/mastra/sandbox-root.ts`, mirrored in `sandbox/src/index.ts` |
-| **Mastra Workspace** | The framework feature in `@mastra/core/workspace` that gives agents `read_file`, `write_file`, `execute_command`, LSP, skills, and search tools. **Not used in this repo.** Filesystem access for the Implementor goes through the separate Bun sandbox MCP service instead — see `docs/local-sandbox-service-design.md`. | n/a (not adopted) |
+| **Workspace State** | Structured project state (`brief`, `styleContext`, `sceneRegistry`, `assets`). Implemented as Mastra working memory with a zod schema, thread-scoped per project. | `mastra/src/mastra/memory/` |
+| **Workspace root** | Filesystem directory for generated Remotion files, uploads, assets, and build outputs. `WORKSPACE_PATH` can override it. | resolved by Mastra server |
+| **Mastra Workspace** | Framework feature from `@mastra/core/workspace` that provides file and command tools. The Implementor uses it directly. | `mastra/src/mastra/workspace-config.ts` |
 
-Additionally, "Bun workspaces" (the monorepo packaging concept covering `web/`, `mastra/`, `sandbox/`) is unrelated word reuse from the package manager.
+Additionally, "Bun workspaces" is the package-manager concept covering `web/` and `mastra/`.
 
-When you see `memory: { workspace: memory }` in `mastra/src/mastra/index.ts`, the key `workspace` is a Mastra memory **registry identifier** (so `mastra.getMemory("workspace")` and Studio's Memory tab work). It is not `@mastra/core/workspace` either.
+When you see `memory: { workspace: memory }` in `mastra/src/mastra/index.ts`, the key `workspace` is a Mastra memory registry identifier. It is not `@mastra/core/workspace`.
 
 ## System Design Principles
 
 ### Separation Of Responsibilities
 
-The Planner, Art Director, and Implementor are kept separate on purpose. Each one does a different kind of work.
+The Planner, Art Director, and Implementor are kept separate on purpose:
 
 - The Planner handles conversation and decisions. It does not write code.
 - The Art Director handles creative design. It does not write code or touch files.
-- The Implementor writes and verifies code. It follows the approved design — it does not invent new creative direction.
-
-This separation makes the system easier to debug and improve. It also prevents planning, design, and code from getting mixed into one messy response.
+- The Implementor writes and verifies code. It follows the approved design and does not invent new creative direction.
 
 ### Editable Output
 
 The system generates Remotion source code, not just a video file. The code can be reviewed, changed, saved to version control, or reused elsewhere.
 
-### Sandboxed Execution
+### Workspace-Backed Execution
 
-Generated code runs inside a local sandbox. The sandbox gives access to a limited set of tools: read files, edit files, load skills, and run checks. This keeps a clear boundary between agent reasoning and code execution.
-
-Only the Implementor uses sandbox tools. The Planner and Art Director stay as reasoning agents with no direct file access.
+Generated code is edited and checked through Mastra Workspace tools inside the Mastra server. Only the Implementor gets file and command tools. Planner and Art Director remain reasoning agents with no direct filesystem access.
 
 ### Memory And Retrieval Are Separate
 
-Memory holds the current project state: what has been decided, built, and changed so far.
+Memory holds current project state. Retrieval holds knowledge from uploaded files, assets, data, and generated artifacts.
 
-Retrieval holds knowledge from uploaded files, assets, data, and generated artifacts.
-
-Keeping them separate means the working state stays clean, while agents can still look up facts when they need them.
+Keeping them separate keeps working state clean while still allowing agents to look up facts when needed.
 
 ### Iterative Routing
 
 Not every request needs the full pipeline. The Planner reads each follow-up and picks the right route.
 
-For example, "make the title bigger" goes straight to the Implementor. "Make the intro feel more premium" goes through the Art Director first because it changes creative direction. "Add a pricing scene" needs a full scene-structure update.
+For example, "make the title bigger" goes straight to Implementor. "Make the intro feel more premium" goes through Art Director first. "Add a pricing scene" needs a structure/design update before implementation.
 
 ## Major Components
 
 ### Frontend Web Application
 
-The frontend is the user's workspace. It has four main areas:
+The frontend has four main areas:
 
-- Chat panel — where the user types prompts and reads responses.
-- Live preview — shows the generated video.
-- Agent activity panel — shows what the system is currently doing.
-- File viewer — lets the user inspect the generated source code.
+- Chat panel.
+- Live preview.
+- Agent activity panel.
+- File viewer.
 
-The frontend only handles display and interaction. It does not call the AI model or run agent logic. It sends messages to the backend and shows the streamed results.
+It only handles display and interaction. It sends messages to Mastra and shows streamed results.
 
 ### Backend Agent Server
 
-The backend runs the agents and manages shared state. It receives messages, runs the right workflow, and streams progress back to the frontend.
+The backend runs the agents and manages shared state. It is responsible for:
 
-It is responsible for:
-
-- Hosting the three agents (Planner as supervisor, Art Director and Implementor as subagents).
-- Persisting the project's workspace state and conversation context.
-- Looking up project knowledge from the knowledge store when an agent asks for it.
-- Giving the Implementor access to sandbox tools through MCP.
+- Hosting Planner, Art Director, and Implementor.
+- Persisting Workspace State and conversation context.
+- Looking up project knowledge when Planner or Art Director asks.
+- Giving Implementor access to Mastra Workspace tools.
 - Streaming activity events to the frontend.
+- Serving workspace read-through routes for the file viewer and preview.
 
-### Planner Agent (Supervisor)
+### Planner Agent
 
-The Planner is the entry point for every user request **and the supervisor that dispatches the other agents**. It:
-
-- Reads what the user wants.
-- Asks one focused question if important details are missing.
-- Creates a structured brief: goal, audience, tone, length, assets, and key messages.
-- Initializes the project's Workspace State.
-- Classifies follow-up requests.
-- **Delegates** to the Art Director and Implementor by calling Mastra's auto-generated subagent tools (`agent-artDirector`, `agent-implementor`), created from the Planner's `agents: { ... }` list.
-
-The Planner does not write code and does not use sandbox tools, but it does control the flow. There is no separate orchestration module — the routing rules live in the Planner's system prompt. This is deliberate: a creative video tool is a chat, and the same agent that hears the user is the one best placed to decide what runs next. The trade-off is less determinism (the LLM could hallucinate a delegation), mitigated by prompt discipline. Field ownership is still enforced by the role-guarded helpers in `mastra/src/mastra/memory/access.ts`.
+The Planner is the entry point for every user request and the supervisor that dispatches other agents. It creates the plan, asks focused questions, initializes Workspace State, classifies follow-ups, and delegates through `agent-artDirector` / `agent-implementor`.
 
 ### Art Director Agent
 
-The Art Director turns the Planner's brief into a visual plan. It:
-
-- Designs each scene: layout, hierarchy, pacing, motion, and transitions.
-- Keeps the style consistent across all scenes.
-- Updates the shared style context.
-- Writes scene design records into the scene registry.
-
-It works in design language, not code. It says "a confident fade-up with subtle scale" — not which animation API to use. That is the Implementor's job.
+The Art Director turns the Planner's brief into visual direction. It writes `styleContext` and scene design records into Workspace State. It works in design language, not code.
 
 ### Implementor Agent
 
-The Implementor writes and verifies the code. It:
+The Implementor writes and verifies code. It reads scene designs and style context, inspects project files, loads relevant skills, writes Remotion components, runs checks, fixes errors, and reports changed files or blockers naturally.
 
-- Reads the scene designs and style context.
-- Checks the current project files in the sandbox.
-- Loads relevant skills only when needed.
-- Writes Remotion components, styling, animations, and transitions.
-- Runs typecheck and optional render checks.
-- Fixes errors until the code is valid.
-- Reports changed files, verification results, and blockers naturally in chat.
-
-It is the only agent with file-editing and verification tools. It follows the Art Director's design and uses its own judgment only to fill small gaps.
+It is the only agent with file-editing and command tools.
 
 ### Delegation
 
-There is no separate orchestration layer. The Planner is a Mastra **supervisor agent** — it lists the Art Director and Implementor under its `agents: { ... }` property, and Mastra auto-generates one tool per subagent:
+There is no separate orchestration layer. The Planner is a Mastra supervisor agent. It lists Art Director and Implementor under `agents: { ... }`, and Mastra auto-generates one tool per subagent:
 
-- `agent-artDirector` — generated from the `agents.artDirector` entry. The Planner calls it to invoke the Art Director for scene design work.
-- `agent-implementor` — generated from the `agents.implementor` entry. The Planner calls it to invoke the Implementor for one scene's code (or a recon dispatch when the Planner needs facts from an opaque upload).
+- `agent-artDirector`
+- `agent-implementor`
 
-When the supervisor LLM calls one of these tools, Mastra runs `subagent.generate(...)` under the hood. Bus emission (`agent.start` / `agent.end`) lives in the Planner's `delegation` hooks — `onDelegationStart` / `onDelegationComplete` — not in any hand-rolled wrapper code. The frontend's activity stream consumes those bus events.
+Bus emission (`agent.start`, `agent.end`, `agent.error`) lives in the Planner's delegation hooks, not in wrapper code.
 
-For initial generation, the Planner usually calls the Art Director once to design the full video, then calls the Implementor scene-by-scene. Field ownership is still enforced: the role-guarded helpers in `mastra/src/mastra/memory/access.ts` reject any wrong-role write, regardless of who calls them.
+For initial generation, the Planner usually calls Art Director once to design the full video, then calls Implementor scene-by-scene.
 
-See [`tasks/T2-planner-agent.md`](tasks/T2-planner-agent.md) for the supervisor wiring and delegation hooks.
+## Project State Layers
 
-### Project State Layers
+Motion Graphics Agent organizes project state into three project-scoped layers:
 
-Motion Graphics Agent organizes project state into three layers, all scoped to a single project session. There is **no cross-session or user-level memory** in the MVP — each project starts fresh.
+1. **Conversation Context** — chat thread plus Mastra Observational Memory.
+2. **Workspace State** — structured working memory for brief, style, scene designs, and assets.
+3. **Project Knowledge Store** — vector index for large uploaded documents.
 
-The three layers are:
+There is no cross-session or user-level memory in the MVP.
 
-1. **Conversation Context** — chat thread + Mastra Observational Memory (auto-compresses old turns).
-2. **Workspace State** — Mastra working memory (zod schema, thread-scoped). The structured, mutable state agents read and write through role-guarded helpers.
-3. **Project Knowledge Store** — `LibSQLVector` index for large unstructured docs, partitioned by `projectId`. Queried via tool only when needed.
+## Related Docs
 
-#### Conversation Context
-
-The current chat thread: user messages, agent responses, recent tool results. Mastra's Observational Memory automatically compresses older turns into a rolling summary so the model still sees relevant history without overflowing the context window.
-
-The whole-video plan also lives here, not in Workspace State — the Planner writes it as a normal chat message after the brief is set.
-
-#### Workspace State
-
-Holds the live state of the project as Mastra **working memory** (zod schema, thread-scoped). Agents read and write these fields through role-guarded helpers. Four fields:
-
-- **`brief`** — structured understanding of what the user wants. Owned by the Planner.
-- **`styleContext`** — the visual language: colors, fonts, mood, animation feel, transitions. Owned by the Art Director.
-- **`sceneRegistry[n].design`** — per-scene creative direction. Owned by the Art Director. Schema deliberately holds only `{ number, name, design }` — no status, no file paths, no errors.
-- **`assets[]`** — uploaded image and font assets as `{ id, path, description }`. Written by the upload handler.
-
-Workspace State is small, structured, and mutable. Scene build status, source file paths, and build errors are **not** persisted here — changed files live on the filesystem under `<workspace>/src/`, and transient implementation status is reported naturally in chat and activity events. Canonical schema: [`tasks/T1A-memory-and-state.md`](tasks/T1A-memory-and-state.md).
-
-#### Project Knowledge Store
-
-Holds the heavy content from uploaded files: chunked text from large PDFs and brand guides, with embeddings for retrieval. It is **not** queried automatically on every user message. Only the Planner and Art Director can call retrieval, on demand, at most once per turn. The Implementor has no retrieval tool.
-
-The principle: **default to Workspace State; the Knowledge Store is the exception, used only for content that is too large to fit in context.** For per-input-type ingest traces (PDF chunking, CSV file copy, image `kind` dispatch, fonts), see [`docs/upload-walkthroughs.md`](docs/upload-walkthroughs.md). For state-layer principles, retrieval rules, and the agent read/write matrix, see [`docs/project-knowledge-and-skills.md`](docs/project-knowledge-and-skills.md).
-
-### Sandbox
-
-The sandbox is where generated code runs. It gives the Implementor a limited set of tools:
-
-- Read files.
-- List and search files.
-- Create and edit files.
-- Load skills.
-- Run typecheck.
-- Run render checks.
-
-The sandbox lets the system verify code before showing it as done. It also keeps file operations controlled and observable.
-
-### Skills
-
-Skills are short implementation guides the Implementor can load on demand. They are not all loaded upfront.
-
-For example, if a scene needs kinetic typography, the Implementor loads a kinetic-text skill. If it needs a chart animation, it loads a chart skill.
-
-This keeps the agent's context focused on what is actually needed.
-
-## How Components Interact
-
-The agents hand off work through three shared objects: the brief, the style context, and the scene registry.
-
-```
-  User
-   │ prompt
-   ▼
-┌─────────┐  brief   ┌──────────────┐  scene designs   ┌─────────────┐
-│ Planner │─────────▶│ Art Director │────────────────▶│ Implementor │
-│         │          └──────────────┘                  │             │
-│ routing │               │ style context              │  sandbox    │
-│decision │               ▼                            │  tools      │
-└─────────┘        ┌──────────────┐                    └──────┬──────┘
-                   │Scene Registry│
-                   └──────────────┘           │
-                                              │ progress events
-                                              ▼
-                                        ┌──────────┐
-                                        │ Frontend │
-                                        │ Preview  │
-                                        └──────────┘
-```
-
-- The **brief** goes from the Planner to the Art Director.
-- The **style context** goes from the Art Director to the Implementor and is updated whenever the creative direction changes.
-- The **scene registry** is shared. The Art Director writes the design fields. The Implementor reads those designs and writes generated files through the sandbox.
-
-## Product Flow
-
-### Initial Video Generation
-
-```
-┌──────┐     ┌─────────┐     ┌──────────────┐     ┌─────────────┐     ┌─────────┐
-│ User │────▶│ Planner │────▶│ Art Director │────▶│ Implementor │────▶│ Preview │
-└──────┘     └────┬────┘     └──────────────┘     └──────┬──────┘     └─────────┘
-                  │ (if info missing)                    │
-                  ▼                                      ▼
-           Clarifying Q                             Sandbox verify
-```
-
-1. The user describes the video they want. Example: _"Create a 20-second product demo for a note-taking app. Clean, fast, trustworthy. Show capture, organize, and share."_
-2. The Planner checks if enough detail is there. If not, it asks one question. If yes, it creates a brief.
-3. The Art Director turns the brief into scenes — intro, features, CTA — and sets the visual style.
-4. The Implementor writes the Remotion code: components, layout, animations, composition.
-5. The sandbox runs typecheck and optionally a render check. The Implementor fixes any errors.
-6. The frontend updates the preview. The user can watch, inspect files, and ask for changes.
-
-### Follow-Up Editing
-
-Each follow-up is routed based on what the user is asking for:
-
-```text
-Exact tweak -> Planner -> Implementor -> Preview
-Creative change -> Planner -> Art Director -> Implementor -> Preview
-Structural change -> Planner -> Art Director -> Implementor -> Preview
-Error fix -> Planner -> Implementor -> Preview
-```
-
-| User Request                     | Type              | Route                                |
-| -------------------------------- | ----------------- | ------------------------------------ |
-| "Make the title bigger."         | Exact tweak       | Planner → Implementor                |
-| "Make the intro more energetic." | Creative change   | Planner → Art Director → Implementor |
-| "Add a pricing scene."           | Structural change | Planner → Art Director → Implementor |
-| "Fix the typecheck error."       | Error fix         | Planner → Implementor                |
-
-Small changes stay fast. Larger creative changes go through the Art Director to keep the design consistent.
-
-## Data And State Flow
-
-The three layers connect in a clear flow. Conversation Context holds what was just said. Workspace State holds the current project. The Knowledge Store holds the heavy uploaded content.
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│                    Conversation Context                      │
-│       chat thread (with summarization when long)             │
-└────────────────────────────┬─────────────────────────────────┘
-                             │ recent turns + summary
-                             ▼
-┌──────────────────────────────────────────────────────────────┐
-│                       Workspace State                        │
-│   brief · style context · scene registry · routing ·         │
-│   assets · data summaries · document summaries · errors      │
-└────────────────────────────┬─────────────────────────────────┘
-                             │ tool call (only when needed)
-                             ▼
-┌──────────────────────────────────────────────────────────────┐
-│                   Project Knowledge Store                    │
-│       chunked large docs · vector index · raw uploads        │
-└──────────────────────────────────────────────────────────────┘
-```
-
-Agents read Workspace State by default. They call into the Knowledge Store only when a needed fact is not already there.
-
-For example, when a user uploads a brand guide PDF, the system extracts a short summary and stores it in Workspace State right away. The Planner uses that summary to draft the brief. If the Planner later needs a specific detail the summary did not cover, it calls a retrieval tool to pull the relevant chunks from the Knowledge Store. The chunks are used for that turn but are not stored in Workspace State.
-
-## Error Handling And Recovery
-
-The system is designed to detect and repair implementation issues.
-
-Common errors include:
-
-- TypeScript type errors.
-- Missing imports.
-- Invalid component references.
-- Broken scene paths.
-- Render-time issues.
-- Mismatches between generated files and preview expectations.
-
-When an error occurs, the Implementor reports the blocker, inspects the relevant files, applies a fix, and reruns verification. The frontend can show the user where the generation flow is and whether the system is fixing an issue.
-
-For product usability, this is important because users should not have to understand TypeScript errors to continue editing a video.
-
-## Security And Safety Boundaries
-
-The most important boundary is between reasoning and execution.
-
-The Planner and Art Director do not receive direct file-editing tools. They produce structured intent and design direction.
-
-The Implementor receives execution tools, but only through the sandbox. This makes generated code operations more controlled and observable.
-
-Additional safety rules include:
-
-- User uploads should be treated as read-only source inputs.
-- Generated outputs should be written to working or output locations, not back into upload sources.
-- Browser-executed Remotion compositions should not make external API calls.
-- Browser-executed compositions should not access the filesystem.
-- Verification should run before marking generated code as complete.
-
-## Technical Stack
-
-For the canonical tech stack table (frontend, agent framework, sandbox transport, persistence, validation, with doc links), see [`AGENTS.md`](AGENTS.md#tech-stack-quick-reference).
-
-The stack is a modern TypeScript monorepo (Bun workspaces) with three cooperating services — Vite frontend, Mastra backend, and a local Bun sandbox exposed over MCP/HTTP.
-
-## User Story 1: Founder Creates A Launch Video
-
-A startup founder is launching a sales dashboard tool. It shows revenue in real time, tracks deals through the pipeline, and alerts the team when a deal is about to close. The founder wants a video for the product hunt launch but has no video or animation experience.
-
-**Goal:** A 20-second video that shows the dashboard in action — live numbers, pipeline view, and smart alerts — and ends with a clear call to action.
-
-**How it goes:**
-
-1. The founder types: _"Create a 20-second launch video for a sales dashboard. Audience: sales managers and startup founders. Feel: sharp, fast, data-driven. Show the live revenue counter, the deal pipeline, and the close-alert notification."_
-2. The Planner reads the request, finds it complete, and creates a brief.
-3. The Art Director designs four scenes: a bold revenue number counting up, a pipeline board with deals moving across stages, a close-alert notification popping in, and a CTA screen.
-4. The Implementor writes the Remotion code — animated counters, card transitions, notification entrance — and the sandbox verifies it.
-5. The frontend shows the live preview and generated files.
-6. The founder says: _"The revenue counter feels too slow. Make it faster and punch the final number."_
-7. The Planner routes it as a direct tweak. The Implementor adjusts the animation and the preview refreshes.
-
-**Result:** The founder gets a sharp, data-driven launch video in minutes — no motion designer, no video tool, no code.
-
-## User Story 2: Designer Creates A Brand Reveal Video
-
-A designer is launching a new brand identity for a client. They have a logo file, a color palette document, and a custom font. They want a short reveal video to share on social media when the rebrand goes live — something that feels intentional and premium, not templated.
-
-**Goal:** A 20-second brand reveal that unveils the logo, walks through the color system, shows the typography in motion, and ends with the full brand lockup.
-
-**How it goes:**
-
-1. The designer uploads the logo, a brand guide PDF, and the font files.
-2. The system indexes the brand guide, stores the logo and fonts as assets, and extracts the color values and tone of voice.
-3. The designer types: _"Make a 20-second brand reveal video for our client's rebrand. It should feel premium and minimal. Unveil the logo, show the color palette, then the typography, and close with the full brand lockup."_
-4. The Planner reads the uploaded materials and creates a brief that captures the visual language and intended mood.
-5. The Art Director designs the scenes using the actual brand colors and font: a dark open, the logo drawing in, each color sliding into frame with its name, the custom font setting a headline, and a final hold on the full lockup.
-6. The Implementor loads a logo animation skill, applies the exact brand colors and font, and writes the Remotion scenes. The sandbox verifies the result.
-7. The frontend shows the preview. The designer sees the actual brand assets in the video — not placeholders.
-8. The designer says: _"The logo reveal feels too quick. Give it more pause before the tagline comes in."_
-9. The Planner routes it as a direct timing tweak. The Implementor adjusts the hold and the preview updates.
-
-**Result:** The designer delivers a polished brand reveal without opening After Effects. The video uses the real assets, reflects the actual brand system, and can be handed off as editable source code if the client wants changes later.
-
-## Why This Design Matters
-
-Motion Graphics Agent is not a chatbot that writes code. It is a structured creative production system.
-
-Each agent protects a different part of the quality. The Planner makes sure the system understands what the user actually wants before doing anything. The Art Director makes sure the video has a clear visual direction before any code is written. The Implementor makes sure the code works before the result is shown.
-
-Good video output is not a single response — it is a chain of decisions: understand the user, set a direction, build it right, check it, and be ready to change it. Doing all of that in one step produces output that is hard to trust and hard to fix. Keeping it separate produces something the user can iterate on with confidence.
+- [`docs/architecture.md`](docs/architecture.md) — engineer-facing architecture
+- [`docs/project-knowledge-and-skills.md`](docs/project-knowledge-and-skills.md) — state, retrieval, and skills rules
+- [`docs/upload-walkthroughs.md`](docs/upload-walkthroughs.md) — upload ingest traces
+- [`tasks/T2-planner-agent.md`](tasks/T2-planner-agent.md) — supervisor wiring and delegation hooks

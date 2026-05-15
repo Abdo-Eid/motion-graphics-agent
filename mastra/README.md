@@ -8,9 +8,9 @@ Current architecture:
 Planner -> Art Director -> Implementor
 ```
 
-- **Planner**: intake, clarification, brief generation, routing, memory ownership
-- **Art Director**: scene-by-scene design and style consistency
-- **Implementor**: sandbox-backed code execution, styling, animation, transitions, typecheck loop
+- **Planner**: intake, clarification, brief generation, routing, memory ownership.
+- **Art Director**: scene-by-scene design and style consistency.
+- **Implementor**: Workspace-backed code execution, styling, animation, transitions, typecheck loop.
 
 ## Development
 
@@ -30,30 +30,27 @@ The Mastra server runs on `http://localhost:4111`.
 
 ## Expected Endpoints
 
-With `chatRoute({ path: '/chat/:agentId' })`, the server exposes endpoints such as:
+The server exposes agent endpoints such as:
 
 - `POST /chat/planner-agent`
 - `POST /chat/art-director-agent`
 - `POST /chat/implementor-agent`
 
-## Sandbox Model
+It also owns upload, event-stream, and workspace read-through routes as those phases land.
 
-This project uses a local Docker sandbox exposed through MCP.
+## Workspace Tools
 
-- Planner and Art Director are non-tool agents.
-- Implementor is the execution agent that consumes MCP tools.
-- The sandbox is expected to provide read/edit/exec-style tools and project skills.
+This project uses Mastra Workspace inside the Mastra server for local file and command tools.
 
-Build the sandbox image from the repo root with:
-
-```bash
-bun run sandbox:build
-```
+- Planner and Art Director do not receive filesystem or command tools.
+- Implementor is the only execution agent.
+- Generated files live under the configured workspace root.
+- `WORKSPACE_PATH` can override the workspace root for development or tests.
 
 ## Memory Model
 
-- Planner owns private memory and shared-memory storage.
-- Art Director updates shared `styleContext` and scene design data.
-- Implementor reads shared scene records and writes generated files through sandbox tools.
+- Planner owns the brief.
+- Art Director updates `styleContext` and scene design data.
+- Implementor reads shared scene records and writes generated files through Workspace tools.
 
-See the repo docs under `../docs/` for the current architecture and implementation details.
+See the repo docs under `../docs/` for current architecture and implementation details.

@@ -9,11 +9,16 @@
   },
   "dependencies": {
     "@mastra/core": "^1.25.0",
+    "@mastra/mcp": "^1.7.0",
     "zod": "4"
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/node": "^25.6.0"
+    "@types/node": "^25.6.0",
+    "mastra": "^1.6.0"
+  },
+  "peerDependencies": {
+    "typescript": "^6.0.3"
   },
   "engines": {
     "node": ">=22.13.0"

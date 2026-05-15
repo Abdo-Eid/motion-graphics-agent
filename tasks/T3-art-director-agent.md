@@ -8,7 +8,7 @@
 
 Build the **Art Director agent**. The creative design layer.
 
-The Art Director turns a Planner brief into scene-by-scene design direction. It does not write code and does not use sandbox tools. It is invoked through the auto-generated `agent-artDirector` subagent tool on the Planner — the `/chat/artDirectorAgent` endpoint exists for direct testing only.
+The Art Director turns a Planner brief into scene-by-scene design direction. It does not write code and does not use filesystem or command tools. It is invoked through the auto-generated `agent-artDirector` subagent tool on the Planner — the `/chat/artDirectorAgent` endpoint exists for direct testing only.
 
 ## What the Art Director Does
 
@@ -54,7 +54,7 @@ Your instructions should define:
 3. **Output**: per-scene design with purpose, composition, visual hierarchy, animation feel, transition direction, assets, and acceptance criteria
 4. **Constraints**:
    - no code
-   - no sandbox tools
+   - no filesystem or command tools
    - no Remotion API references
    - preserve style consistency across scenes
 5. **Shared memory behavior**:
@@ -108,6 +108,6 @@ Expected result: the response should describe scene design clearly without writi
 
 ## Reference
 
-- `docs/SETUP_GUIDE.md`
+- [`../docs/architecture.md`](../docs/architecture.md)
 - `docs/project-knowledge-and-skills.md`
 - [`T2-planner-agent.md`](T2-planner-agent.md) — supervisor wiring + `delegation` hooks (how the Planner invokes this agent)

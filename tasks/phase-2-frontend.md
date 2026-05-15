@@ -65,7 +65,7 @@ The activity panel should be designed around the current role split:
 
 ## Preview
 
-Use a placeholder Remotion composition for now. The real compositions will be synced from sandbox output later.
+Use a placeholder Remotion composition for now. The real compositions will be synced from workspace output later.
 
 ## Files To Create Or Modify
 

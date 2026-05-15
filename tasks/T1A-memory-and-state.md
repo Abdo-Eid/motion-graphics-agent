@@ -72,7 +72,7 @@ export const SceneRecord = z.object({
 // Knowledge Store (pdf/txt/md) or the uploads/ folder (csv).
 export const Asset = z.object({
     id: z.string(), // UUID (node:crypto randomUUID); stable; referenced by Brief.assets[]
-    path: z.string(), // relative to sandboxRoot, e.g. "assets/<id>.png"
+    path: z.string(), // relative to workspaceRoot, e.g. "assets/<id>.png"
     originalName: z.string(), // user's filename at upload time (display only)
     mime: z.string(), // detected mime, always "image/*" in MVP
     bytes: z.number().int().nonnegative(),
@@ -108,7 +108,7 @@ Mastra working memory has one access mode per call (read-write or `readOnly: tru
 
 A wrong-role call throws synchronously. The Planner's `delegation` hooks in T2 catch the throw and emit a `field-ownership-violation` event on the bus.
 
-The **Implementor has no memory-write tools at all.** It is pure-consumer of working memory: reads `styleContext` + `sceneRegistry[n].design`, runs sandbox tools, and reports changed files, verification results, and blockers naturally in chat. Build status, file paths, and errors are not written to working memory; generated files flow through the filesystem itself (consumed by the Phase 4 workspace read-through routes).
+The **Implementor has no memory-write tools at all.** It is pure-consumer of working memory: reads `styleContext` + `sceneRegistry[n].design`, runs Workspace tools, and reports changed files, verification results, and blockers naturally in chat. Build status, file paths, and errors are not written to working memory; generated files flow through the filesystem itself (consumed by the Phase 4 workspace read-through routes).
 
 ## Conversation Context
 

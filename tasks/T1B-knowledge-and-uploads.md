@@ -11,14 +11,14 @@ For the role/principles framing (state layers, retrieval rules, agent read/write
 | Knowledge Store vector | `@mastra/libsql` `LibSQLVector`, separate instance from any Memory-internal vector; **same DB file** (`file:./mastra.db`)    |
 | Embedding model        | AI SDK `embed` / `embedMany` against Track A's shared `embeddingModel()` from `mastra/src/mastra/model.ts`                   |
 | Chunking               | `MDocument.chunk()` from `@mastra/rag` — `markdown` for `.md`, `recursive` otherwise                                         |
-| Asset storage          | Files copied under `<sandboxRoot>/assets/`; path resolved by `mastra/src/mastra/sandbox-root.ts`                              |
+| Asset storage          | Files copied under `<workspaceRoot>/assets/`; path resolved by the Mastra workspace-root helper                              |
 | Upload transport       | Mastra `apiRoutes` on port 4111 (no separate Express, no SSE)                                                                |
 
 ## File Layout
 
 ```text
 mastra/src/mastra/
-  sandbox-root.ts           # File-anchored sandbox-root path resolver (shared with sandbox service). NOT @mastra/core/workspace.
+  workspace-root.ts         # File-anchored workspace-root path resolver. NOT Workspace State.
   knowledge/
     store.ts                # LibSQLVector index + lazy ensureProjectKnowledgeIndex + read-time metadata guard
     ingest-text.ts          # MDocument -> embedMany -> upsertProjectKnowledge
@@ -33,7 +33,7 @@ No `chunker.ts` and no `embeddings.ts` ship — chunking is `MDocument`, embeddi
 
 ## Coordination With Track A
 
-- **`Asset` zod schema** is locked in Track A's `memory/schema.ts`. Only images produce Asset rows. Image handler populates: `id` (UUID v4 from `node:crypto.randomUUID()`), `path` relative to `sandboxRoot` (`assets/<id>.<ext>`), `originalName`, `mime` (always `image/*`), `bytes`, `description: ""`. `createdAt` is stamped by `appendAsset`. Docs (pdf/csv/txt/md) and `kind=reference` images do **not** call `appendAsset`.
+- **`Asset` zod schema** is locked in Track A's `memory/schema.ts`. Only images produce Asset rows. Image handler populates: `id` (UUID v4 from `node:crypto.randomUUID()`), `path` relative to `workspaceRoot` (`assets/<id>.<ext>`), `originalName`, `mime` (always `image/*`), `bytes`, `description: ""`. `createdAt` is stamped by `appendAsset`. Docs (pdf/csv/txt/md) and `kind=reference` images do **not** call `appendAsset`.
 - **`appendAsset` vs `addAsset`** — Track A exposes both. `addAsset` is the role-guarded `createTool`. `appendAsset` is the underlying impl; upload handlers run as the system path and import `appendAsset` directly to skip the role check and bypass the tool-context cast. The `addAsset` tool is preserved for any future role-guarded system caller.
 - **`projectId` propagation:** the multipart form carries `projectId`. Track A's invariant `threadId === projectId === resourceId` carries through — `appendAsset` uses `projectId` as both `threadId` and `resourceId`. Same value is the Knowledge Store partition key on every read/write.
 
@@ -78,13 +78,13 @@ No `nanoid` — `assetId` is `randomUUID()` from `node:crypto`. No `@ai-sdk/open
 ```env
 # mastra/.env (Track B's vars; full set in repo .env.example)
 AZURE_EMBEDDING_DEPLOYMENT=text-embedding-3-small
-# WORKSPACE_PATH is optional. Defaults to <repo>/sandbox/.workspace via
-# file-anchored resolve in mastra/src/mastra/sandbox-root.ts. Override only to
-# point uploads at a different absolute directory.
+# WORKSPACE_PATH is optional. Defaults to the Mastra-owned local .workspace
+# directory. Override only to point uploads and generated files at a different
+# absolute directory.
 # WORKSPACE_PATH=C:\absolute\path\to\workspace
 ```
 
-The LibSQL URL is **not** an env var. Both Memory (Track A) and the Knowledge Store pin `url: "file:./mastra.db"` directly; Mastra resolves it relative to its working directory, so the file lands at `mastra/mastra.db`. `sandboxRoot` is shared with the sandbox so asset paths align — main app writes only to `assets/` and `uploads/`; everything else under that path is the sandbox's.
+The LibSQL URL is **not** an env var. Both Memory (Track A) and the Knowledge Store pin `url: "file:./mastra.db"` directly; Mastra resolves it relative to its working directory, so the file lands at `mastra/mastra.db`. `workspaceRoot` is shared by upload handlers and Mastra Workspace tools so asset paths align.
 
 ## Checkpoints
 
@@ -120,7 +120,7 @@ Studio has no multipart upload widget, so upload is `curl`. Retrieval is via `t1
     curl -F file=@logo.png -F kind=asset -F projectId=proj-1 http://localhost:4111/uploads
     ```
 
-    - File at `<sandboxRoot>/assets/<assetId>.<ext>`.
+    - File at `<workspaceRoot>/assets/<assetId>.<ext>`.
     - Studio Working Memory for `proj-1` shows `assets[]` with `{ id, path: 'assets/<...>', originalName, mime, bytes, description: '', createdAt }`.
     - No chunks written for this upload.
 
@@ -130,7 +130,7 @@ Studio has no multipart upload widget, so upload is `curl`. Retrieval is via `t1
     curl -F file=@data.csv -F projectId=proj-1 http://localhost:4111/uploads
     ```
 
-    File copied verbatim to `<sandboxRoot>/uploads/<assetId>.csv`. No chunking, no embedding, no Asset row.
+    File copied verbatim to `<workspaceRoot>/uploads/<assetId>.csv`. No chunking, no embedding, no Asset row.
 
 5. **Reject unsupported types.**
 
@@ -147,7 +147,7 @@ Acceptance = all six pass *and* the constraints below hold.
 ## Constraints
 
 - Implementor must not have access to `retrieveProjectKnowledge` (architecture invariant — see [`../docs/architecture.md`](../docs/architecture.md) and [`../docs/project-knowledge-and-skills.md`](../docs/project-knowledge-and-skills.md)).
-- Raw uploaded files are read-only inputs. Generated artifacts go to `<sandboxRoot>/src/` and `out/`, never back into upload sources.
+- Raw uploaded files are read-only inputs. Generated artifacts go to `<workspaceRoot>/src/` and `out/`, never back into upload sources.
 - Use `embedMany` for batched single-call embedding. No per-chunk loops, no in-memory cache.
 - Both ingest and query route through `embeddingModel()` from `mastra/src/mastra/model.ts`. Mixing models between ingest and query produces nonsense cosine scores.
 - `appendAsset` is the only path that writes the `assets` array from upload code. The `addAsset` tool exists for future role-guarded system callers; do not call the tool from upload handlers.
@@ -180,7 +180,7 @@ Final shipped state diverges from the original spec in places. This section capt
 6. **Single test agent.** `memoryTestAgent` and `t1bRetrievalTestAgent` collapsed into one `t1TestAgent` carrying `setBrief`, `setStyleContext`, `setSceneDesign`, `retrieveProjectKnowledge`.
 7. **`appendAsset` extracted from `addAsset`.** Image handler imports the plain impl directly. The role-guarded `addAsset` tool is preserved unchanged.
 8. **`assetId` is `randomUUID()` from `node:crypto`.** Originally specced as `nanoid(21)`, then briefly `randomUUIDv7()` from `bun` — but Mastra CLI bundles the server in a Node-ish context where the virtual `"bun"` module does not resolve, breaking `bun run dev`. `node:crypto.randomUUID()` works under both `bun run` and `mastra dev`, has no dep, and `Asset.id` is `z.string()`. Don't hard-code id length or v7 ordering downstream.
-9. **No env vars for LibSQL or workspace path.** Original spec had `LIBSQL_URL` and `SANDBOX_WORKSPACE_DIR`. Both removed: `LibSQLStore` (Track A) and `LibSQLVector` (Track B) pin `file:./mastra.db` directly; `sandboxRoot` resolves via `import.meta.url`-anchored `resolve(here, '../../../sandbox/.workspace')`. `WORKSPACE_PATH` is an optional override.
+9. **No env vars for LibSQL.** Original spec had `LIBSQL_URL`; it was removed. `LibSQLStore` (Track A) and `LibSQLVector` (Track B) pin `file:./mastra.db` directly. `WORKSPACE_PATH` remains an optional override for the filesystem workspace.
 10. **Spec line corrected.** Original spec said `server.build.apiRoutes`. Correct shape (verified against installed `@mastra/core` types) is `server.apiRoutes`.
 
 ### Known acceptable limitations

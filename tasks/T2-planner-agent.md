@@ -36,7 +36,7 @@ No `delegations.ts` file. Delegation is wiring, not code.
 - Drive the AD -> Implementor handoff at a high level.
 - Let specialists ask the user direct, natural questions when they are the right person to ask.
 
-The Planner does not write code and does not use sandbox tools. Routing decisions and the scene plan are implicit in chat — not persisted as a separate field.
+The Planner does not write code and does not use filesystem or command tools. Routing decisions and the scene plan are implicit in chat — not persisted as a separate field.
 
 ## Plan In Chat
 
@@ -73,7 +73,7 @@ Planner -> Implementor scene 2
 Planner -> Implementor scene 3
 ```
 
-The Planner manages sequencing in its prompt. Delegation hooks do not parse prompts, track scene numbers, or reject scene-ordering policy. Lower layers still enforce real safety: role-guarded Workspace State writes and sandbox file boundaries.
+The Planner manages sequencing in its prompt. Delegation hooks do not parse prompts, track scene numbers, or reject scene-ordering policy. Lower layers still enforce real safety: role-guarded Workspace State writes and Implementor-only Workspace tools.
 
 ## Routing Rules (Live in the Planner's Prompt)
 
@@ -170,7 +170,7 @@ Cover:
    - Planner is the main RAG consumer
    - Workspace State holds the active working state
    - RAG feeds facts into prompts; memory persists decisions
-7. **Constraints**: MVP is short product and screen-recording videos only. The Planner never writes code, never reads/writes files, never invokes sandbox tools.
+7. **Constraints**: MVP is short product and screen-recording videos only. The Planner never writes code, never reads/writes files, never invokes Workspace tools.
 
 ## Subagent `description` Fields
 
@@ -191,7 +191,7 @@ export const artDirectorAgent = new Agent({
 export const implementorAgent = new Agent({
   id: 'implementor-agent',
   description: `Writes Remotion scene code for one scene at a time.
-    Reads finalized scene design + styleContext, runs sandbox tools (read_file, write_file, exec_command).
+    Reads finalized scene design + styleContext, runs Workspace tools (read_file, write_file, exec_command).
     Use after the Art Director has produced a design, or for exact unambiguous code edits.
     Can ask the user technical questions directly when implementation is blocked. Does NOT write working memory.`,
   // ...
@@ -301,7 +301,7 @@ Expected:
 - Planner asks a clarifying question, **or**
 - Planner produces a brief, then emits tool calls to `agent-artDirector` and `agent-implementor` (visible in the response trace as `tool-call` events with `toolName: "agent-artDirector"` / `toolName: "agent-implementor"`).
 - Art Director writes `styleContext` and scene designs.
-- Implementor writes scene code when sandbox tools are available.
+- Implementor writes scene code when Workspace tools are available.
 - Bus emits matching `agent.start` / `agent.end` events from the `delegation` hooks.
 
 **2. Tweak routing.**
@@ -318,7 +318,7 @@ Expected: Planner emits only `agent-implementor`. Art Director is not invoked.
 - [`T1B-knowledge-and-uploads.md`](T1B-knowledge-and-uploads.md) — `retrieveProjectKnowledge` tool the Planner consumes
 - [`T3-art-director-agent.md`](T3-art-director-agent.md) — subagent invoked via `agent-artDirector`
 - [`T4-implementor-agent.md`](T4-implementor-agent.md) — subagent invoked via `agent-implementor`
-- `docs/SETUP_GUIDE.md`
+- [`../docs/architecture.md`](../docs/architecture.md)
 - `docs/project-knowledge-and-skills.md`
 - Mastra supervisor agents: <https://mastra.ai/docs/agents/supervisor-agents>
 - Mastra agents-as-tools: <https://mastra.ai/docs/agents/using-tools#agents-as-tools>

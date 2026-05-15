@@ -63,24 +63,25 @@ For per-input-type ingest mechanics (PDF chunking, CSV file copy, image `kind` d
 
 ## Filesystem Layout
 
-The main app and the sandbox share one workspace folder. Ownership is split:
+The Mastra server owns one local workspace folder. Upload handlers and Implementor tools write to different parts of that folder:
 
 ```text
 <workspace>/
   assets/      <- main app writes (image asset uploads only)
   uploads/     <- main app writes (CSV uploads)
-  src/         <- sandbox writes (Implementor-generated Remotion code)
-  out/         <- sandbox writes (rendered video, build artifacts)
+  src/         <- Implementor writes generated Remotion code
+  out/         <- Implementor/check commands write rendered video or build artifacts
 ```
 
 Rules:
 
-- The main app **only writes** to `assets/` and `uploads/`. Never into `src/` or `out/`.
-- The sandbox **never writes** to `assets/` or `uploads/`. Treats them as read-only inputs.
+- Upload handlers write to `assets/` and `uploads/`.
+- Implementor writes generated code under `src/` and may produce build artifacts under `out/`.
+- Implementor treats raw uploads and source assets as inputs. It should not mutate uploaded files in place.
 - Raw uploads are inputs, not working files; the Implementor copies or transforms before mutating.
 - The Knowledge Store (chunks + embeddings) lives in the LibSQL DB at `mastra/mastra.db`, not on disk under the workspace.
 
-The sandbox-root path is resolved file-anchored: each service computes `WORKSPACE_PATH ?? <repo>/sandbox/.workspace` from `import.meta.url`, so it works the same under `bun run`, `mastra dev`, and `mastra start` without a CWD assumption. See `mastra/src/mastra/sandbox-root.ts` and `sandbox/src/index.ts`. The LibSQL URL is hardcoded as `file:./mastra.db` in both `mastra/src/mastra/memory/index.ts` and `mastra/src/mastra/knowledge/store.ts`. Neither requires an env var.
+The workspace-root path should be resolved by the Mastra server. `WORKSPACE_PATH` can override it; otherwise use a gitignored `.workspace` directory owned by the Mastra package. The LibSQL URL is hardcoded as `file:./mastra.db` in both `mastra/src/mastra/memory/index.ts` and `mastra/src/mastra/knowledge/store.ts`. Neither requires an env var.
 
 ---
 
@@ -119,14 +120,14 @@ Field ownership is enforced by the role-guarded helpers in `mastra/src/mastra/me
 ### Implementor
 
 - Reads `styleContext` and `sceneRegistry[n].design` from Workspace State (read-only — no memory-write tools).
-- Uses sandbox MCP tools and the skill loader.
+- Uses Mastra Workspace tools and the skill loader.
 - Has no retrieval tool. The relevant facts are already encoded in `styleContext` and the scene design.
 
 ---
 
 ## Skills — Staged Loading
 
-Skills are short implementation guides for the Implementor. They are **not** part of the Knowledge Store and **not** part of the upload router. The skill system is its own task (T7) — see [`../tasks/T7-mcp-client-and-skills.md`](../tasks/T7-mcp-client-and-skills.md) for the canonical spec.
+Skills are short implementation guides for the Implementor. They are **not** part of the Knowledge Store and **not** part of the upload router. They should live in a Mastra-owned skills directory and be loaded on demand.
 
 ### Indexing
 
@@ -148,7 +149,7 @@ For MVP:
 
 1. `search_skills(query)`
 2. `load_skill(name)`
-3. normal file `read` (already provided by the sandbox MCP surface)
+3. normal file `read` (provided by the Implementor's workspace tool surface)
 
 Do **not** add `read_skill_resource(...)` — mainstream agents load `SKILL.md` and use a normal read tool for referenced files. Adding more tools increases surface area without adding capability.
 
@@ -158,7 +159,7 @@ Do **not** add `read_skill_resource(...)` — mainstream agents load `SKILL.md` 
 1. Implementor task arrives
 2. agent -> search_skills("kinetic text animation")
 3. agent -> load_skill("remotion-kinetic-text")
-4. agent reads referenced files with the sandbox read tool if needed
+4. agent reads referenced files with the workspace read tool if needed
 5. agent executes
 ```
 
