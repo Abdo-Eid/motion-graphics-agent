@@ -1,13 +1,14 @@
-import type { Dispatch, SetStateAction } from 'react'
+import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import type { Theme } from '../theme/themes'
 
 type TopbarProps = {
   t: Theme
   dark: boolean
   setDark: Dispatch<SetStateAction<boolean>>
+  statusSlot?: ReactNode
 }
 
-export function Topbar({ t, dark, setDark }: TopbarProps) {
+export function Topbar({ t, dark, setDark, statusSlot }: TopbarProps) {
   return (
     <div
       style={{
@@ -64,6 +65,7 @@ export function Topbar({ t, dark, setDark }: TopbarProps) {
           gap: 8,
         }}
       >
+        {statusSlot}
         <div
           style={{
             padding: '3px 10px',

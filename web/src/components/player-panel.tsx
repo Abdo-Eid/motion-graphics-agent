@@ -1,6 +1,7 @@
-import type { Dispatch, MouseEvent, SetStateAction } from 'react'
+import { useEffect, useState, type Dispatch, type MouseEvent, type SetStateAction } from 'react'
+import type { ActivityEvent } from '../lib/events'
+import { getWorkspaceFile } from '../lib/workspace-api'
 import type { Theme } from '../theme/themes'
-import { MockProductTour } from './mock-product-tour'
 
 type PlayerPanelProps = {
   t: Theme
@@ -8,6 +9,8 @@ type PlayerPanelProps = {
   setPlaying: Dispatch<SetStateAction<boolean>>
   progress: number
   setProgress: Dispatch<SetStateAction<number>>
+  events: ActivityEvent[]
+  revision: number
 }
 
 type TransportButton = {
@@ -22,18 +25,71 @@ export function PlayerPanel({
   setPlaying,
   progress,
   setProgress,
+  events,
+  revision,
 }: PlayerPanelProps) {
+  const [entryPath, setEntryPath] = useState<string | null>(null)
+  const [entryError, setEntryError] = useState<string | null>(null)
   const currentTime = (progress * 20).toFixed(1)
   const transportButtons: TransportButton[] = [
-    { label: '⟨⟨', onClick: () => setProgress(0), accent: false },
-    { label: playing ? '⏸' : '▶', onClick: () => setPlaying((current) => !current), accent: true },
-    { label: '⟩⟩', onClick: () => setProgress(1), accent: false },
+    { label: '<<', onClick: () => setProgress(0), accent: false },
+    { label: playing ? 'Pause' : 'Play', onClick: () => setPlaying((current) => !current), accent: true },
+    { label: '>>', onClick: () => setProgress(1), accent: false },
   ]
 
+  useEffect(() => {
+    let cancelled = false
+
+    Promise.allSettled([getWorkspaceFile('src/index.tsx'), getWorkspaceFile('src/index.ts')]).then(
+      (results) => {
+        if (cancelled) {
+          return
+        }
+
+        const tsx = results[0]
+        const ts = results[1]
+
+        if (tsx.status === 'fulfilled') {
+          setEntryPath('src/index.tsx')
+          setEntryError(null)
+          return
+        }
+
+        if (ts.status === 'fulfilled') {
+          setEntryPath('src/index.ts')
+          setEntryError(null)
+          return
+        }
+
+        setEntryPath(null)
+        setEntryError('No Remotion entry found at src/index.tsx or src/index.ts')
+      },
+    )
+
+    return () => {
+      cancelled = true
+    }
+  }, [revision])
+
+  useEffect(() => {
+    if (!entryPath && playing) {
+      setPlaying(false)
+    }
+  }, [entryPath, playing, setPlaying])
+
   const handleSeek = (event: MouseEvent<HTMLDivElement>) => {
+    if (!entryPath) {
+      return
+    }
+
     const rect = event.currentTarget.getBoundingClientRect()
     setProgress((event.clientX - rect.left) / rect.width)
   }
+
+  const latestCompositionChange = events.findLast(
+    (event): event is Extract<ActivityEvent, { type: 'workspace.file' }> =>
+      event.type === 'workspace.file' && event.path.startsWith('src/'),
+  )
 
   return (
     <div
@@ -61,7 +117,7 @@ export function PlayerPanel({
             width: '98%',
             maxWidth: 960,
             aspectRatio: '16/9',
-            background: '#f7f5f2',
+            background: '#111114',
             borderRadius: 8,
             border: `1px solid ${t.borderAccent}`,
             overflow: 'hidden',
@@ -69,11 +125,14 @@ export function PlayerPanel({
             boxShadow: '0 8px 40px rgba(0,0,0,0.15)',
           }}
         >
-          <div style={{ position: 'absolute', inset: 0 }}>
-            <MockProductTour progress={progress} />
-          </div>
+          <PreviewPlaceholder
+            t={t}
+            entryPath={entryPath}
+            error={entryError}
+            latestChange={latestCompositionChange?.path ?? null}
+          />
         </div>
-        {!playing && (
+        {entryPath && !playing && (
           <button
             onClick={() => setPlaying(true)}
             style={{
@@ -111,14 +170,7 @@ export function PlayerPanel({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span
-            style={{
-              fontFamily: t.monoFont,
-              fontSize: 10,
-              color: t.textMuted,
-              width: 32,
-            }}
-          >
+          <span style={{ fontFamily: t.monoFont, fontSize: 10, color: t.textMuted, width: 32 }}>
             {currentTime}s
           </span>
           <div
@@ -127,8 +179,9 @@ export function PlayerPanel({
               height: 3,
               background: t.border,
               borderRadius: 99,
-              cursor: 'pointer',
+              cursor: entryPath ? 'pointer' : 'not-allowed',
               position: 'relative',
+              opacity: entryPath ? 1 : 0.45,
             }}
             onClick={handleSeek}
           >
@@ -157,15 +210,7 @@ export function PlayerPanel({
               }}
             />
           </div>
-          <span
-            style={{
-              fontFamily: t.monoFont,
-              fontSize: 10,
-              color: t.textMuted,
-              width: 28,
-              textAlign: 'right',
-            }}
-          >
+          <span style={{ fontFamily: t.monoFont, fontSize: 10, color: t.textMuted, width: 28, textAlign: 'right' }}>
             20.0s
           </span>
         </div>
@@ -174,13 +219,15 @@ export function PlayerPanel({
             <button
               key={button.label}
               onClick={button.onClick}
+              disabled={!entryPath}
               style={{
                 background: button.accent ? t.accent : 'transparent',
                 border: `1px solid ${t.border}`,
                 color: button.accent ? '#000' : t.textMuted,
                 padding: '4px 10px',
                 borderRadius: t.radiusSm,
-                cursor: 'pointer',
+                cursor: entryPath ? 'pointer' : 'not-allowed',
+                opacity: entryPath ? 1 : 0.45,
                 fontFamily: t.monoFont,
                 fontSize: 11,
               }}
@@ -189,23 +236,19 @@ export function PlayerPanel({
             </button>
           ))}
           <div style={{ flex: 1 }} />
-          <span
-            style={{
-              fontFamily: t.monoFont,
-              fontSize: 10,
-              color: t.textMuted,
-            }}
-          >
+          <span style={{ fontFamily: t.monoFont, fontSize: 10, color: t.textMuted }}>
             {Math.floor(progress * 600)}/600 frames
           </span>
           <button
+            disabled={!entryPath}
             style={{
               background: 'transparent',
               border: `1px solid ${t.borderAccent}`,
               color: t.tagText,
               padding: '4px 12px',
               borderRadius: t.radiusSm,
-              cursor: 'pointer',
+              cursor: entryPath ? 'pointer' : 'not-allowed',
+              opacity: entryPath ? 1 : 0.45,
               fontSize: 11,
               fontFamily: t.font,
               fontWeight: 500,
@@ -214,6 +257,63 @@ export function PlayerPanel({
             Export MP4
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function PreviewPlaceholder({
+  t,
+  entryPath,
+  error,
+  latestChange,
+}: {
+  t: Theme
+  entryPath: string | null
+  error: string | null
+  latestChange: string | null
+}) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background:
+          'radial-gradient(circle at 25% 20%, rgba(130,160,255,0.22), transparent 28%), linear-gradient(135deg, #111114, #23232b)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: 'white',
+      }}
+    >
+      <div style={{ width: '70%', maxWidth: 460, textAlign: 'center' }}>
+        <div style={{ fontSize: 12, fontFamily: t.monoFont, color: 'rgba(255,255,255,0.62)', marginBottom: 12 }}>
+          Remotion preview
+        </div>
+        <div style={{ fontSize: 22, lineHeight: 1.15, marginBottom: 10 }}>
+          {entryPath ? 'Generated composition detected' : 'Waiting for generated composition'}
+        </div>
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.62)', lineHeight: 1.5 }}>
+          {entryPath
+            ? `${entryPath} is present. The real Player can be enabled once the generated entry export shape is fixed.`
+            : error}
+        </div>
+        {latestChange ? (
+          <div
+            style={{
+              display: 'inline-flex',
+              marginTop: 14,
+              padding: '5px 9px',
+              borderRadius: 99,
+              border: '1px solid rgba(255,255,255,0.18)',
+              color: 'rgba(255,255,255,0.7)',
+              fontSize: 10,
+              fontFamily: t.monoFont,
+            }}
+          >
+            latest change: {latestChange}
+          </div>
+        ) : null}
       </div>
     </div>
   )

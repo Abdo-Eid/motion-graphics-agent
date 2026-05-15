@@ -19,5 +19,8 @@
     },
     "peerDependencies": {
         "typescript": "^5"
+    },
+    "dependencies": {
+        "@mastra/mcp": "^1.7.0"
     }
 }
