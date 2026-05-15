@@ -91,10 +91,10 @@ Beyond uploads, the project produces artifacts during the session:
 - **Brief** — Workspace State (`brief`), written by the Planner.
 - **`styleContext`** — Workspace State, written by the Art Director.
 - **`sceneRegistry[n].design`** — Workspace State, written by the Art Director. The schema deliberately holds only `{ number, name, design }` per scene.
-- **Scene status, source file paths, build errors** — **not** in working memory. They live in the subagent's `## Summary` reply block (read by the Planner that turn) and on the filesystem under `src/` and `out/` (consumed by the Phase 4 workspace read-through routes).
+- **Scene status, source file paths, build errors** — **not** in working memory. Changed files live on the filesystem under `src/` and `out/`, while transient implementation status is reported naturally in chat and activity events.
 - **Plan / scene-by-scene outline** — lives in the chat message stream, not as a persisted field. Observational Memory compresses it over time; the brief in working memory remains the durable record.
 
-Follow-up requests like "make scene 2 feel more energetic" are answered by reading Workspace State + the most recent scene Summary; no retrieval is needed for current-project artifacts.
+Follow-up requests like "make scene 2 feel more energetic" are answered by reading Workspace State and current project files; no retrieval is needed for current-project artifacts.
 
 ---
 

@@ -54,6 +54,6 @@ bun run sandbox:build
 
 - Planner owns private memory and shared-memory storage.
 - Art Director updates shared `styleContext` and scene design data.
-- Implementor updates build status, file paths, and error state in shared scene records.
+- Implementor reads shared scene records and writes generated files through sandbox tools.
 
 See the repo docs under `../docs/` for the current architecture and implementation details.

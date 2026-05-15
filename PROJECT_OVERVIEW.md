@@ -237,7 +237,7 @@ The Implementor writes and verifies the code. It:
 - Writes Remotion components, styling, animations, and transitions.
 - Runs typecheck and optional render checks.
 - Fixes errors until the code is valid.
-- Updates each scene's build status, file path, and any errors.
+- Reports changed files, verification results, and blockers naturally in chat.
 
 It is the only agent with file-editing and verification tools. It follows the Art Director's design and uses its own judgment only to fill small gaps.
 
@@ -248,11 +248,11 @@ There is no separate orchestration layer. The Planner is a Mastra **supervisor a
 - `agent-artDirector` — generated from the `agents.artDirector` entry. The Planner calls it to invoke the Art Director for scene design work.
 - `agent-implementor` — generated from the `agents.implementor` entry. The Planner calls it to invoke the Implementor for one scene's code (or a recon dispatch when the Planner needs facts from an opaque upload).
 
-When the supervisor LLM calls one of these tools, Mastra runs `subagent.generate(...)` under the hood. Bus emission (`agent.start` / `agent.end`) and invariant enforcement (e.g. rejecting two concurrent Implementor calls) live in the Planner's `delegation` hooks — `onDelegationStart` / `onDelegationComplete` — not in any hand-rolled wrapper code. The frontend's activity stream consumes those bus events.
+When the supervisor LLM calls one of these tools, Mastra runs `subagent.generate(...)` under the hood. Bus emission (`agent.start` / `agent.end`) lives in the Planner's `delegation` hooks — `onDelegationStart` / `onDelegationComplete` — not in any hand-rolled wrapper code. The frontend's activity stream consumes those bus events.
 
-The Planner can call these tools in **parallel** for the lockstep pipeline (Implementor on scene `n` ∥ Art Director on scene `n+1`) — Mastra dispatches parallel tool calls concurrently. Field ownership is still enforced: the role-guarded helpers in `mastra/src/mastra/memory/access.ts` reject any wrong-role write, regardless of who calls them.
+For initial generation, the Planner usually calls the Art Director once to design the full video, then calls the Implementor scene-by-scene. Field ownership is still enforced: the role-guarded helpers in `mastra/src/mastra/memory/access.ts` reject any wrong-role write, regardless of who calls them.
 
-See [`tasks/T2-planner-agent.md`](tasks/T2-planner-agent.md) for the supervisor wiring, `delegation` hooks, and pipeline invariants.
+See [`tasks/T2-planner-agent.md`](tasks/T2-planner-agent.md) for the supervisor wiring and delegation hooks.
 
 ### Project State Layers
 
@@ -279,7 +279,7 @@ Holds the live state of the project as Mastra **working memory** (zod schema, th
 - **`sceneRegistry[n].design`** — per-scene creative direction. Owned by the Art Director. Schema deliberately holds only `{ number, name, design }` — no status, no file paths, no errors.
 - **`assets[]`** — uploaded image and font assets as `{ id, path, description }`. Written by the upload handler.
 
-Workspace State is small, structured, and mutable. Scene build status, source file paths, and build errors are **not** persisted here — they live in the subagent's `## Summary` reply (read by the Planner that turn) and on the filesystem under `<workspace>/src/` (consumed by the Phase 4 read-through routes). Canonical schema: [`tasks/T1A-memory-and-state.md`](tasks/T1A-memory-and-state.md).
+Workspace State is small, structured, and mutable. Scene build status, source file paths, and build errors are **not** persisted here — changed files live on the filesystem under `<workspace>/src/`, and transient implementation status is reported naturally in chat and activity events. Canonical schema: [`tasks/T1A-memory-and-state.md`](tasks/T1A-memory-and-state.md).
 
 #### Project Knowledge Store
 
@@ -322,7 +322,7 @@ The agents hand off work through three shared objects: the brief, the style cont
 │ routing │               │ style context              │  sandbox    │
 │decision │               ▼                            │  tools      │
 └─────────┘        ┌──────────────┐                    └──────┬──────┘
-                   │Scene Registry│◀──── build status ────────┘
+                   │Scene Registry│
                    └──────────────┘           │
                                               │ progress events
                                               ▼
@@ -334,7 +334,7 @@ The agents hand off work through three shared objects: the brief, the style cont
 
 - The **brief** goes from the Planner to the Art Director.
 - The **style context** goes from the Art Director to the Implementor and is updated whenever the creative direction changes.
-- The **scene registry** is shared. The Art Director writes the design fields. The Implementor writes the build status, file paths, and errors.
+- The **scene registry** is shared. The Art Director writes the design fields. The Implementor reads those designs and writes generated files through the sandbox.
 
 ## Product Flow
 
@@ -417,7 +417,7 @@ Common errors include:
 - Render-time issues.
 - Mismatches between generated files and preview expectations.
 
-When an error occurs, the Implementor updates the scene registry with the error state, inspects the relevant files, applies a fix, and reruns verification. The frontend can show the user where the pipeline is and whether the system is fixing an issue.
+When an error occurs, the Implementor reports the blocker, inspects the relevant files, applies a fix, and reruns verification. The frontend can show the user where the generation flow is and whether the system is fixing an issue.
 
 For product usability, this is important because users should not have to understand TypeScript errors to continue editing a video.
 

@@ -100,19 +100,7 @@ No Docker required.
 
 ### Environment
 
-Create `.env` at the repo root:
-
-```env
-AZURE_RESOURCE_NAME=<azure-resource-name>
-AZURE_API_KEY=<azure-resource-key>
-AZURE_API_VERSION=preview
-AZURE_CHAT_DEPLOYMENT=<chat-deployment-name>
-AZURE_EMBEDDING_DEPLOYMENT=<embedding-deployment-name>
-SANDBOX_MCP_URL=http://localhost:4311/mcp
-SANDBOX_HTTP_PORT=4311
-# Optional. Defaults to <repo>/sandbox/.workspace.
-# WORKSPACE_PATH=C:\absolute\path\to\workspace
-```
+Copy `.env.example` to `.env` at the repo root and fill in the empty values.
 
 The LibSQL DB path is **not** an env var — both Memory and the Knowledge Store pin `file:./mastra.db` (resolves to `mastra/mastra.db`).
 

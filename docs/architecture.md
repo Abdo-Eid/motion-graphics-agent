@@ -9,7 +9,7 @@ Planner (supervisor) ──▶ Art Director (subagent)
                     └──▶ Implementor (subagent)
 ```
 
-The Planner is a Mastra **supervisor agent**. It lists Art Director and Implementor under `agents: { ... }`; Mastra auto-generates the subagent tools (`agent-artDirector`, `agent-implementor`) from that map. There is no separate orchestration module — routing rules live in the Planner's system prompt; bus emission and invariant guards live in `delegation` hooks.
+The Planner is a Mastra **supervisor agent**. It lists Art Director and Implementor under `agents: { ... }`; Mastra auto-generates the subagent tools (`agent-artDirector`, `agent-implementor`) from that map. There is no separate orchestration module — routing rules live in the Planner's system prompt; bus emission lives in `delegation` hooks.
 
 Field ownership is enforced by the role-guarded helpers in `mastra/src/mastra/memory/access.ts` — wrong-role writes throw and emit `field-ownership-violation` on the bus regardless of which agent calls them.
 
@@ -17,13 +17,13 @@ Canonical spec: [`../tasks/T2-planner-agent.md`](../tasks/T2-planner-agent.md). 
 
 ## Routing (Quick Reference)
 
-The full routing table with invariants and the lockstep pipeline lives in [`../tasks/T2-planner-agent.md`](../tasks/T2-planner-agent.md). One-line summary:
+The full routing table lives in [`../tasks/T2-planner-agent.md`](../tasks/T2-planner-agent.md). One-line summary:
 
 - Exact tweak → `agent-implementor` only
 - Creative change → `agent-artDirector` then `agent-implementor`
 - Style change → `agent-artDirector` (style only) then per-scene `agent-implementor`
 - Error fix → `agent-implementor` only
-- Initial generation / restructure → write the plan in chat, then run the AD↔Impl pipeline
+- Initial generation / restructure → write the plan in chat, wait for user confirmation, call AD for full-video or affected-scene design, then call Implementor scene-by-scene
 
 ## Runtime Layout
 

@@ -1,6 +1,6 @@
 import { Agent } from '@mastra/core/agent';
 import { readOnlyMemory } from '../memory';
-import { agentModel } from '../model';
+import { codingModel } from '../model';
 
 const instructions = `
 # Role
@@ -37,7 +37,7 @@ When sandbox tools are attached, follow this sequence:
 9. Run run_typecheck to verify the code compiles.
 10. If typecheck fails, inspect the error, fix the smallest relevant issue, and run run_typecheck again.
 11. Repeat until typecheck passes or you are blocked by an issue outside your control.
-12. End with a ## Summary block.
+12. Briefly report what changed, what was verified, or what blocked the work.
 
 # Workflow — When Tools Are Missing
 
@@ -49,16 +49,11 @@ If sandbox tools are not attached in this environment:
 - Do NOT claim that typecheck passed.
 - Instead, provide the intended implementation plan: describe what files you would create or edit, what the code would look like, and what steps you would take.
 - Explain that sandbox tools (read_file, edit_file, create_file, list_files, run_typecheck, etc.) are needed to actually inspect, edit, and verify files.
-- Use status: needs-input when blocked by missing tools.
-- Still end with a ## Summary block.
+- Ask the user directly if you need a decision before continuing.
 
 Example response when tools are missing:
 
 I can outline the implementation, but sandbox tools are not attached in this environment, so I cannot inspect, edit, or typecheck files yet.
-
-## Summary
-- status: needs-input
-- notes: Sandbox tools are not attached, so no files were changed.
 
 # Available Tools (When Attached)
 
@@ -115,25 +110,17 @@ All output code must follow these conventions:
 - Fix the smallest relevant issue first.
 - Run run_typecheck again after each fix.
 - If the error persists after reasonable attempts, report the exact blocker.
-- Use status: error for failed implementations.
-- Put the error description in the notes field.
 - Never hide, swallow, or ignore errors.
 
 # Reply Contract
 
-Every response you produce MUST end with exactly this block:
+Respond naturally and directly.
 
-## Summary
-- status: ok | error | needs-input
-- notes: <one line>
-
-Rules for the Summary block:
-- No response may omit the ## Summary block.
-- status must be exactly one of: ok, error, needs-input.
-- notes must be a single clear line.
-- If files were changed, mention the changed files in notes.
-- If you are blocked, mention the blocker in notes.
-- If tools are missing, state that no files were changed.
+- If files changed, mention the changed files.
+- If verification ran, mention the verification result.
+- If blocked, explain the blocker clearly.
+- If you need a technical decision from the user, ask one focused question.
+- Do not use mandatory machine-readable footer blocks.
 `.trim();
 
 export const implementorAgent = new Agent({
@@ -142,9 +129,9 @@ export const implementorAgent = new Agent({
   description: `Writes Remotion scene code for one scene at a time.
 Reads finalized scene design + styleContext and uses sandbox tools when available.
 Use after the Art Director has produced a design, or for exact unambiguous code edits.
-Returns a Markdown reply ending in a "## Summary" block. Does NOT write working memory.`,
+Can ask the user technical questions directly when implementation is blocked. Does NOT write working memory.`,
   instructions,
-  model: agentModel(),
+  model: codingModel(),
   memory: readOnlyMemory,
   tools: {
     // Sandbox tools will be added here in T7

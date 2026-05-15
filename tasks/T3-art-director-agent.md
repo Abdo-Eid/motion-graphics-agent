@@ -60,7 +60,7 @@ Your instructions should define:
 5. **Shared memory behavior**:
    - update `styleContext` when creative decisions become explicit
    - write scene design records into `sceneRegistry`
-6. **Reply contract**: end every reply with a `## Summary` block in the shape defined in [`T2-planner-agent.md`](T2-planner-agent.md) under "Subagent Summaries". The Planner relies on this block to drive the pipeline.
+6. **Reply style**: respond naturally. If a creative choice is missing, ask the user directly and clearly. Do not use mandatory machine-readable footer blocks.
 
 The output should describe animation in feel-based motion language, not API language. For example:
 

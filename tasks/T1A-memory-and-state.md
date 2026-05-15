@@ -108,7 +108,7 @@ Mastra working memory has one access mode per call (read-write or `readOnly: tru
 
 A wrong-role call throws synchronously. The Planner's `delegation` hooks in T2 catch the throw and emit a `field-ownership-violation` event on the bus.
 
-The **Implementor has no memory-write tools at all.** It is pure-consumer of working memory: reads `styleContext` + `sceneRegistry[n].design`, runs sandbox tools, reports outcome via the `## Summary` block in its reply. Build status, file paths, and errors flow back through the Summary (read by Planner) and through the filesystem itself (consumed by the Phase 4 workspace read-through routes) — not through working memory.
+The **Implementor has no memory-write tools at all.** It is pure-consumer of working memory: reads `styleContext` + `sceneRegistry[n].design`, runs sandbox tools, and reports changed files, verification results, and blockers naturally in chat. Build status, file paths, and errors are not written to working memory; generated files flow through the filesystem itself (consumed by the Phase 4 workspace read-through routes).
 
 ## Conversation Context
 

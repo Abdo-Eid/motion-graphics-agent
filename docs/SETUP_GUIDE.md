@@ -109,19 +109,7 @@ motion-graphics-agent/
 
     Also delete the `.env.example` files if you want.
 
-7. Create `.env` at root:
-
-    ```
-    AZURE_RESOURCE_NAME=<azure-resource-name>
-    AZURE_API_KEY=<azure-resource-key>
-    AZURE_API_VERSION=preview
-    AZURE_CHAT_DEPLOYMENT=<chat-deployment-name>
-    AZURE_EMBEDDING_DEPLOYMENT=<embedding-deployment-name>
-    SANDBOX_MCP_URL=http://localhost:4311/mcp
-    SANDBOX_HTTP_PORT=4311
-    # Optional. Defaults to <repo>/sandbox/.workspace.
-    # WORKSPACE_PATH=C:\absolute\path\to\workspace
-    ```
+7. Copy `.env.example` to `.env` at the repo root and fill in the empty values.
 
     The app uses `@ai-sdk/azure` through `mastra/src/mastra/model.ts`; do not add `AGENT_MODEL` or provider-router env vars for the Phase 3 agents. The LibSQL DB path is **not** an env var — both Memory and the Knowledge Store pin `file:./mastra.db` (resolves to `mastra/mastra.db` at runtime).
 
@@ -177,7 +165,7 @@ The Mastra CLI in Phase 1 created the `mastra/` workspace. Now build the agent s
 | 5 | Sandbox Service | `tasks/T6-sandbox-service.md` | Local Bun MCP service exposing file + exec tools |
 | 6 | MCP Client + Skills | `tasks/T7-mcp-client-and-skills.md` | Wire main app to sandbox; ship v1 skill docs |
 
-> **Architecture note.** The Planner is a Mastra supervisor agent — it lists the Art Director and Implementor under `agents: { ... }` and Mastra auto-generates `agent-artDirector` / `agent-implementor` tools to dispatch them. There is no separate orchestrator and no hand-rolled wrapper tools. Routing rules live in the Planner's system prompt; bus emission and invariant guards live in `delegation` hooks.
+> **Architecture note.** The Planner is a Mastra supervisor agent — it lists the Art Director and Implementor under `agents: { ... }` and Mastra auto-generates `agent-artDirector` / `agent-implementor` tools to dispatch them. There is no separate orchestrator and no hand-rolled wrapper tools. Routing rules live in the Planner's system prompt; bus emission lives in `delegation` hooks.
 
 ### Execution order
 

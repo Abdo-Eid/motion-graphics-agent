@@ -22,8 +22,11 @@ function ctx(agentId: string) {
     } as Parameters<NonNullable<typeof setBrief.execute>>[1];
 }
 
-const allowedCtx = ctx("t1-test-agent");
-const forbiddenCtx = ctx("implementor");
+// Per-tool callers must match the real agent ids the ACL allows.
+const plannerCtx = ctx("planner-agent");
+const artDirectorCtx = ctx("art-director-agent");
+// The Implementor must never receive any setter — use it as the negative case.
+const forbiddenCtx = ctx("implementor-agent");
 
 function assert(condition: unknown, message: string): asserts condition {
     if (!condition) {
@@ -35,7 +38,7 @@ async function runTool<TInput, TOutput>(
     label: string,
     execute: ((input: TInput, context: ReturnType<typeof ctx>) => Promise<TOutput>) | undefined,
     input: TInput,
-    context: ReturnType<typeof ctx> = allowedCtx,
+    context: ReturnType<typeof ctx>,
 ) {
     assert(execute, `FAIL ${label}: execute handler is missing`);
     return execute(input, context);
@@ -85,7 +88,7 @@ await runTool("setBrief", setBrief.execute, {
             format: "landscape",
         },
     },
-});
+}, plannerCtx);
 
 await expectFailureWithoutMutation("setBrief", () =>
     runTool(
@@ -114,7 +117,7 @@ await runTool("setStyleContext", setStyleContext.execute, {
         animationFeel: "smooth and confident",
         transitions: "soft fades and subtle slides",
     },
-});
+}, artDirectorCtx);
 
 await expectFailureWithoutMutation("setStyleContext", () =>
     runTool(
@@ -143,7 +146,7 @@ await runTool("setSceneDesign", setSceneDesign.execute, {
         animationFeel: "slow fade in with slight scale",
         transition: "fade to next scene",
     },
-});
+}, artDirectorCtx);
 
 await expectFailureWithoutMutation("setSceneDesign", () =>
     runTool(
@@ -161,8 +164,9 @@ await expectFailureWithoutMutation("setSceneDesign", () =>
     projectId,
 );
 
-// addAsset is system-only, never attached to an agent — keeps the explicit
-// role/projectId inputs and is invoked without an agent context.
+// addAsset is system-only, never attached to an agent — its execute
+// ignores the agent context and gates on `role: "system"` + an explicit
+// projectId. We still pass a ctx to satisfy the runTool signature.
 await runTool("addAsset", addAsset.execute, {
     projectId,
     role: "system",
@@ -174,7 +178,7 @@ await runTool("addAsset", addAsset.execute, {
         bytes: 12345,
         description: "",
     },
-});
+}, plannerCtx);
 
 const rawWorkingMemory = await memory.getWorkingMemory({
     threadId: projectId,

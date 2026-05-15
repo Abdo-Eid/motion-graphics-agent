@@ -10,29 +10,23 @@ import {
     WorkspaceStateSchema,
 } from "./schema.ts";
 
-// FUTURE (Option 2 — T1A-memory-and-state.md): when T2/T3/T4 land, each
-// real agent gets ONLY the setter tool that matches its role. Planner →
-// `setBrief`. Art Director → `setStyleContext` + `setSceneDesign`.
-// Implementor → none. The wiring in `mastra/src/mastra/index.ts` becomes
-// the primary ACL and this allowlist becomes the dead-man switch that
+// Each real agent gets ONLY the setter tool that matches its role. The
+// wiring in `mastra/src/mastra/index.ts` (via each agent's `tools: {}`)
+// is the primary ACL; these allowlists are the dead-man switch that
 // catches wiring drift. See `docs/working-memory-dilemma.md`.
-//
-// Today (T1 test phase) the single `t1-test-agent` holds all three setters
-// at once because there are no separate role-specific agents yet — it
-// stands in for all roles to verify the backend.
+//   Planner       → `setBrief`
+//   Art Director  → `setStyleContext`, `setSceneDesign`
+//   Implementor   → none
 
 const SET_BRIEF_ALLOWED: ReadonlySet<string> = new Set([
-    "t1-test-agent", // T1 test stand-in; remove when Planner ships.
     "planner-agent",
 ]);
 
 const SET_STYLE_CONTEXT_ALLOWED: ReadonlySet<string> = new Set([
-    "t1-test-agent",
     "art-director-agent",
 ]);
 
 const SET_SCENE_DESIGN_ALLOWED: ReadonlySet<string> = new Set([
-    "t1-test-agent",
     "art-director-agent",
 ]);
 
@@ -92,7 +86,7 @@ function requireCaller(
     }
 
     if (!allowed.has(agentId)) {
-        bus.emit("field-ownership-violation", {
+        bus.emitEvent("field-ownership-violation", {
             field: toolName,
             role: agentId,
             expectedRole,

@@ -22,7 +22,7 @@ The Implementor is invoked through the auto-generated `agent-implementor` subage
 - implements styling, motion, and transitions in one pass
 - runs `run_typecheck()` after edits
 - optionally runs `run_render_check()`
-- reports build status, file paths, and any errors back to the Planner via the `## Summary` block in its reply (not via working memory)
+- reports changed files, verification results, and any blockers naturally in its reply (not via working memory)
 
 This agent writes real React and Remotion code.
 
@@ -70,7 +70,7 @@ Your instructions should define:
     - short product-video scope
     - no external API calls in compositions
     - no filesystem access in browser-executed compositions
-6. **Reply contract**: end every reply with a `## Summary` block in the shape defined in [`T2-planner-agent.md`](T2-planner-agent.md) under "Subagent Summaries". On error, set `status: error` and put the error message in `notes` so the Planner can decide whether to retry or escalate.
+6. **Reply style**: respond naturally. Mention changed files, verification results, and blockers. If a technical decision is needed, ask the user one focused question. Do not use mandatory machine-readable footer blocks.
 
 Implementation rules:
 

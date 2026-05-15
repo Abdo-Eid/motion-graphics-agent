@@ -1,4 +1,4 @@
-﻿import { extname } from 'node:path';
+import { extname } from 'node:path';
 
 import { handle as handleCsv } from './handlers/csv';
 import { handle as handleImage } from './handlers/image';

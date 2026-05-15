@@ -40,7 +40,7 @@ For the canonical phase walkthrough (what each phase builds, the checkpoint that
 
 ## Dependency Graph (Phase 3)
 
-> Architecture: Planner is a Mastra supervisor agent. The Art Director and Implementor are subagents listed under `agents: { ... }`; Mastra auto-generates `agent-artDirector` / `agent-implementor` tools and runs delegations under the hood. Bus emission and invariant guards live in `delegation` hooks. There is no separate orchestrator and no hand-rolled `delegations.ts`.
+> Architecture: Planner is a Mastra supervisor agent. The Art Director and Implementor are subagents listed under `agents: { ... }`; Mastra auto-generates `agent-artDirector` / `agent-implementor` tools and runs delegations under the hood. Bus emission lives in `delegation` hooks. There is no separate orchestrator and no hand-rolled `delegations.ts`.
 
 ```
                 ┌──────────────────────────┐
@@ -123,7 +123,7 @@ Wire both outputs into `mastra/src/mastra/index.ts`: `new Mastra({ storage, agen
 - **What**: Two pieces shipped together. (a) The Planner agent — Mastra **supervisor** that owns user conversation, clarification, brief, routing classification, and dispatches subagents via the auto-generated `agent-artDirector` / `agent-implementor` tools (Mastra creates these from the Planner's `agents: { ... }` list). (b) A tiny in-process event bus (`server/bus.ts`) consumed by the Phase 4 SSE route, fed by the Planner's `delegation` hooks. Routing rules live in the Planner's instructions, not in code. No hand-rolled delegation tools.
 - **Status**: Complete on `main`.
 - **Files**: `mastra/src/mastra/agents/planner.ts`, `mastra/src/mastra/server/bus.ts`, `mastra/src/mastra/index.ts` (modify — register all three agents). No `delegations.ts` — Mastra auto-generates the subagent tools from the Planner's `agents: { ... }` list.
-- **Begin**: build the bus first (10 lines around `EventEmitter`), then the Planner agent with the routing table inline in its `instructions` and the two subagents wired in via `agents: { artDirector, implementor }`. Add `delegation` hooks (`onDelegationStart` / `onDelegationComplete`) that emit `agent.start` / `agent.end` on the bus and enforce the in-flight invariants. Register all three agents in `index.ts` to unlock the Phase 3 base checkpoint.
+- **Begin**: build the bus first (10 lines around `EventEmitter`), then the Planner agent with the routing table inline in its `instructions` and the two subagents wired in via `agents: { artDirector, implementor }`. Add `delegation` hooks (`onDelegationStart` / `onDelegationComplete`) that emit `agent.start` / `agent.end` on the bus. Register all three agents in `index.ts` to unlock the Phase 3 base checkpoint.
 - **Checkpoint**: `POST /chat/plannerAgent` with a full prompt produces `agent-artDirector` and `agent-implementor` tool calls in the trace; with a tweak prompt, only `agent-implementor` fires. Bus emits matching `agent.start` / `agent.end`.
 - **Docs**: <https://mastra.ai/docs/agents/supervisor-agents>, <https://mastra.ai/docs/agents/using-tools#agents-as-tools>, <https://mastra.ai/guides/migrations/network-to-supervisor>.
 

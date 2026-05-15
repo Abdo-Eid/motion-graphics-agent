@@ -9,11 +9,19 @@ const azure = createAzure({
 });
 
 /**
- * Shared chat model factory for every agent in T1A/T2/T3/T4.
+ * Shared chat model factory for Planner, Art Director, and memory helpers.
  * Returns a model bound to the Azure chat deployment named in env.
  */
 export function agentModel() {
     return azure(requireEnv("AZURE_CHAT_DEPLOYMENT"));
+}
+
+/**
+ * Coding model factory for the Implementor.
+ * Returns a model bound to the Azure coding deployment named in env.
+ */
+export function codingModel() {
+    return azure(requireEnv("AZURE_CODING_DEPLOYMENT"));
 }
 
 /**

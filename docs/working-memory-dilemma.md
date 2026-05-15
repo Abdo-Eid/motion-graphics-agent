@@ -131,21 +131,14 @@ tools that match its role.
 | Art Director      | `setStyleContext`, `setSceneDesign`|
 | Implementor       | _(no working-memory writers)_      |
 
-This is what `tasks/T1A-memory-and-state.md` already prescribes.
-Today the T1 test agent holds all three setters because it stands in
-for every role. When T2/T3/T4 land, each real agent gets exactly its
-allowed tools and the allowlist in `access.ts` becomes the dead-man
-switch that catches wiring drift, not the primary gate.
-
-Concrete checklist for that cutover:
-
-- Plumb each role-specific agent into `mastra/src/mastra/index.ts` with
-  only its sanctioned setters in `tools: { ... }`.
-- Remove `"t1-test-agent"` from `SET_BRIEF_ALLOWED` /
-  `SET_STYLE_CONTEXT_ALLOWED` / `SET_SCENE_DESIGN_ALLOWED` in
-  `access.ts` once the test agent is deleted.
-- Add the real agent ids (`"planner"`, `"art-director"`) to the
-  allowlists if they aren't already.
+This is what `tasks/T1A-memory-and-state.md` already prescribes, and
+T2/T3/T4 have landed: the real agents are wired in
+`mastra/src/mastra/index.ts` with only their sanctioned setters in
+`tools: { ... }`, and the allowlist in `access.ts` is the dead-man
+switch that catches wiring drift. The previous `"t1-test-agent"`
+stand-in has been removed from all three allowlists; the negative-path
+test in `mastra/scripts/test-memory-tools.ts` now uses the real agent
+ids (`planner-agent`, `art-director-agent`, `implementor-agent`).
 
 ## What Mastra ships by default
 

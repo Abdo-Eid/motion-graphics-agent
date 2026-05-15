@@ -44,10 +44,10 @@ web/src/
 
 ```ts
 type ActivityEvent =
-  | { type: 'agent.start';    agent: AgentId; sceneNumber?: number; ts: number }
+  | { type: 'agent.start';    agent: AgentId; ts: number }
   | { type: 'agent.message';  agent: AgentId; text: string; ts: number }
   | { type: 'agent.tool';     agent: AgentId; tool: string; ts: number }
-  | { type: 'agent.end';      agent: AgentId; sceneNumber?: number; ts: number }
+  | { type: 'agent.end';      agent: AgentId; ts: number }
   | { type: 'agent.error';    agent: AgentId; error: string; ts: number }
   | { type: 'workspace.file'; path: string; change: 'add' | 'change' | 'unlink'; ts: number }
   | { type: 'upload.status';  assetId: string; status: IngestStatus; ts: number }
@@ -60,10 +60,10 @@ type AgentId = 'planner' | 'art-director' | 'implementor'
 
 - In-process event bus (`EventEmitter` is fine for MVP).
 - SSE route: `GET /events/:projectId` — opens a long-lived response, writes `data: {json}\n\n` per event, sends a heartbeat comment every 15 s.
-- The Planner's `delegation` hooks emit `agent.start` / `agent.end` / `agent.error` (with `sceneNumber` when the dispatch was per-scene).
+- The Planner's `delegation` hooks emit `agent.start` / `agent.end` / `agent.error`.
 - Upload pipeline emits `upload.status` events.
 - Watcher emits `workspace.file` events under `<sandboxRoot>/src/` (the resolved `sandboxRoot`). The `workspace.file` event name is the bus event taxonomy name and is preserved as-is — see [Part A](#part-a--connection-and-event-taxonomy) for the canonical taxonomy.
-- The frontend reconstructs per-scene status from the `agent.start` / `agent.end` payloads (which carry `sceneNumber`) plus filesystem signals — there is no dedicated `scene.update` event.
+- The frontend reconstructs per-scene status from Workspace State and filesystem signals — there is no dedicated `scene.update` event.
 - Health pings emit `service.health` for `mastra` and `sandbox` (the sandbox health is observed by the MCP client; success = `ok: true`).
 
 ### Client Side
