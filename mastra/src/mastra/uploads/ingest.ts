@@ -23,6 +23,9 @@ export interface IngestResult {
   ingestStatus: IngestStatus;
   path?: string;
   source?: string;
+  originalName?: string;
+  mime?: string;
+  bytes?: number;
 }
 
 export async function ingestUpload(input: UploadInput): Promise<IngestResult> {

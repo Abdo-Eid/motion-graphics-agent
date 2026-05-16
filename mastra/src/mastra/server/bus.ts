@@ -1,9 +1,12 @@
 import { EventEmitter } from 'node:events';
 
 export type BusEvent =
-  | { type: 'agent.start'; agent: string; input?: unknown }
-  | { type: 'agent.end'; agent: string; output?: unknown }
-  | { type: 'agent.error'; agent: string; error: string }
+  | { type: 'agent.start'; agent: string; projectId?: string; input?: unknown }
+  | { type: 'agent.end'; agent: string; projectId?: string; output?: unknown }
+  | { type: 'agent.error'; agent: string; projectId?: string; error: string }
+  | { type: 'workspace.file'; path: string; change: 'add' | 'change' | 'unlink' }
+  | { type: 'upload.status'; projectId: string; assetId: string; status: 'pending' | 'done' | 'errored'; path?: string; originalName?: string; mime?: string }
+  | { type: 'service.health'; service: 'mastra'; ok: boolean }
   | { type: 'field-ownership-violation'; field: string; role: string; expectedRole: string };
 
 export type BusEventType = BusEvent['type'];
@@ -24,6 +27,18 @@ class ProjectBus extends EventEmitter {
   // (including `type`), so consumers can switch on it if desired.
   onEvent<T extends BusEventType>(type: T, listener: BusListener<T>): this {
     return super.on(type, listener as (event: unknown) => void);
+  }
+
+  offEvent<T extends BusEventType>(type: T, listener: BusListener<T>): this {
+    return super.off(type, listener as (event: unknown) => void);
+  }
+
+  onAnyEvent(type: BusEventType, listener: (event: BusEvent) => void): this {
+    return super.on(type, listener as (event: unknown) => void);
+  }
+
+  offAnyEvent(type: BusEventType, listener: (event: BusEvent) => void): this {
+    return super.off(type, listener as (event: unknown) => void);
   }
 }
 

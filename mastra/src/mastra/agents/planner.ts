@@ -11,6 +11,30 @@ import { bus } from '../server/bus';
 import { artDirectorAgent } from './art-director';
 import { implementorAgent } from './implementor';
 
+function readStringPath(value: unknown, path: string[]): string | undefined {
+  let current = value;
+
+  for (const key of path) {
+    if (!current || typeof current !== 'object' || !(key in current)) {
+      return undefined;
+    }
+
+    current = (current as Record<string, unknown>)[key];
+  }
+
+  return typeof current === 'string' && current.trim() ? current : undefined;
+}
+
+function projectIdFromDelegationContext(context: DelegationStartContext | DelegationCompleteContext): string | undefined {
+  return readStringPath(context, ['agent', 'threadId'])
+    ?? readStringPath(context, ['agent', 'resourceId'])
+    ?? readStringPath(context, ['threadId'])
+    ?? readStringPath(context, ['resourceId'])
+    ?? readStringPath(context, ['memory', 'thread'])
+    ?? readStringPath(context, ['memory', 'resource'])
+    ?? readStringPath(context, ['projectId']);
+}
+
 export const plannerAgent = new Agent({
   id: 'planner-agent',
   name: 'Planner',
@@ -23,7 +47,8 @@ RESPONSIBILITIES:
 2. **Clarification**: Ask only for obvious missing essentials that would block a useful result. Do not over-question preferences that can be reasonably inferred.
 3. **Planning**: For new projects, write a scene-by-scene plan in chat (e.g., "1. Intro (0-3s)...") and wait for user confirmation before delegating.
 4. **Delegation**: Use agent-artDirector and agent-implementor tools to drive the creative handoff.
-5. **RAG**: Use retrieveProjectKnowledge to pull facts from uploaded documents and assets.
+5. **Uploads**: Workspace State lists uploaded files under uploads with Workspace paths like uploads/<id>.pdf.
+6. **RAG**: Use retrieveProjectKnowledge to pull facts from uploaded documents and assets.
 
 ROUTING RULES:
 - Initial generation: Write plan in chat -> wait for user confirmation -> call agent-artDirector once for full-video creative direction -> call agent-implementor scene-by-scene.
@@ -42,7 +67,7 @@ DELEGATION DISCIPLINE:
 - If a specialist asks the user a question, pass it through naturally instead of converting it into a status block.
 - On error: Pause, decide if you need to re-delegate (fix) or ask the user.
 
-You never write code, never read/write files, and never use sandbox tools directly.
+You never write code, never read/write files, and never use Workspace tools directly.
   `.trim(),
   model: agentModel(),
   memory,
@@ -60,6 +85,7 @@ You never write code, never read/write files, and never use sandbox tools direct
       onDelegationStart: async (context: DelegationStartContext) => {
         bus.emitEvent('agent.start', {
           agent: context.primitiveId,
+          projectId: projectIdFromDelegationContext(context),
           input: context.prompt,
         });
 
@@ -70,6 +96,7 @@ You never write code, never read/write files, and never use sandbox tools direct
         if (context.error) {
           bus.emitEvent('agent.error', {
             agent: context.primitiveId,
+            projectId: projectIdFromDelegationContext(context),
             error: context.error.message,
           });
           return;
@@ -77,6 +104,7 @@ You never write code, never read/write files, and never use sandbox tools direct
 
         bus.emitEvent('agent.end', {
           agent: context.primitiveId,
+          projectId: projectIdFromDelegationContext(context),
           output: context.result.text,
         });
       },

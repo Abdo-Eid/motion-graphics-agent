@@ -8,17 +8,16 @@ type ConnectionStatusProps = {
   onRetry: () => void
 }
 
-function latestSandboxHealth(events: ActivityEvent[]) {
+function latestMastraHealth(events: ActivityEvent[]) {
   return events.findLast(
     (event): event is Extract<ActivityEvent, { type: 'service.health' }> =>
-      event.type === 'service.health' && event.service === 'sandbox',
+      event.type === 'service.health' && event.service === 'mastra',
   )
 }
 
 export function ConnectionStatus({ t, connection, events, onRetry }: ConnectionStatusProps) {
-  const sandbox = latestSandboxHealth(events)
-  const mastraOk = connection === 'open'
-  const sandboxOk = sandbox?.ok ?? false
+  const mastra = latestMastraHealth(events)
+  const mastraOk = connection === 'open' && (mastra?.ok ?? true)
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -26,14 +25,8 @@ export function ConnectionStatus({ t, connection, events, onRetry }: ConnectionS
         t={t}
         label="Mastra :4111"
         ok={mastraOk}
-        detail={connection}
+        detail={mastra ? (mastra.ok ? connection : 'offline') : connection}
         onClick={onRetry}
-      />
-      <StatusBadge
-        t={t}
-        label="Sandbox :4311"
-        ok={sandboxOk}
-        detail={sandbox ? (sandbox.ok ? 'online' : 'offline') : 'unknown'}
       />
     </div>
   )

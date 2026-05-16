@@ -23,10 +23,11 @@ CONSTRAINTS:
 
 WORKFLOW:
 1. Read the project brief and any existing style context.
-2. If you need more information about uploaded assets or brand guidelines, use retrieveProjectKnowledge.
-3. Define the visual style (palette, typography, mood) using setStyleContext.
-4. For initial generation, design the whole video when possible: set the shared style context, then write every scene design with setSceneDesign.
-5. For follow-up creative changes, update only the affected style or scene designs.
+2. Check Workspace State uploads for uploaded file names and Workspace paths.
+3. If you need more information about uploaded assets or brand guidelines, use retrieveProjectKnowledge.
+4. Define the visual style (palette, typography, mood) using setStyleContext.
+5. For initial generation, design the whole video when possible: set the shared style context, then write every scene design with setSceneDesign.
+6. For follow-up creative changes, update only the affected style or scene designs.
 
 USER INTERACTION:
 - If a creative choice is missing, ask the user directly in natural language.

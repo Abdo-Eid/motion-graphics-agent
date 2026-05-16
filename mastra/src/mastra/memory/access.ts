@@ -4,9 +4,9 @@ import { z } from "zod";
 import { bus } from "../server/bus.ts";
 import { memory } from "./index.ts";
 import {
-    AssetSchema,
     BriefSchema,
     StyleContextSchema,
+    UploadSchema,
     WorkspaceStateSchema,
 } from "./schema.ts";
 
@@ -137,9 +137,14 @@ async function readWorkspaceState(projectId: string) {
         resourceId: projectId,
     });
 
-    return WorkspaceStateSchema.parse(
+    const { assets, ...state } = WorkspaceStateSchema.parse(
         rawWorkingMemory ? JSON.parse(rawWorkingMemory) : {},
     );
+
+    return {
+        ...state,
+        uploads: state.uploads.length > 0 ? state.uploads : assets ?? [],
+    };
 }
 
 /**
@@ -297,75 +302,75 @@ export const setSceneDesign = createTool({
     },
 });
 
-const AssetInput = AssetSchema.omit({ createdAt: true }).extend({
+const UploadInput = UploadSchema.omit({ createdAt: true }).extend({
     description: z.string().default(""),
 });
 
-type AppendAssetInput = z.input<typeof AssetInput>;
+type AppendUploadInput = z.input<typeof UploadInput>;
 
 /**
- * Internal system-side append for WorkspaceState.assets. Stamps createdAt and
- * defaults description. Used by the addAsset tool (after role check) and
+ * Internal system-side append for WorkspaceState.uploads. Stamps createdAt and
+ * defaults description. Used by the addUpload tool (after role check) and
  * directly by upload handlers, which run as system and skip the role guard.
  */
-export async function appendAsset(input: { projectId: string; asset: AppendAssetInput }) {
+export async function appendUpload(input: { projectId: string; upload: AppendUploadInput }) {
     await ensureThread(input.projectId);
 
     const currentState = await readWorkspaceState(input.projectId);
 
-    const nextAsset = {
-        ...input.asset,
-        description: input.asset.description ?? "",
+    const nextUpload = {
+        ...input.upload,
+        description: input.upload.description ?? "",
         createdAt: new Date().toISOString(),
     };
 
     await memory.updateWorkingMemory({
         threadId: input.projectId,
         resourceId: input.projectId,
-        workingMemory: JSON.stringify({
-            ...currentState,
-            assets: [...currentState.assets, nextAsset],
-        }),
+            workingMemory: JSON.stringify({
+                ...currentState,
+                uploads: [...currentState.uploads, nextUpload],
+            }),
     });
 
-    return nextAsset;
+    return nextUpload;
 }
 
-// addAsset is system-only and never attached to an agent (per
+// addUpload is system-only and never attached to an agent (per
 // T1A-memory-and-state.md), so it keeps an explicit `role: "system"`
 // gate plus the explicit projectId — there is no calling agent context to
 // read identity from.
 const SystemRole = z.enum(["system"]);
 
-const AddAssetInput = z.object({
+const AddUploadInput = z.object({
     projectId: z.string(),
     role: SystemRole,
-    asset: AssetInput,
+    upload: UploadInput,
 });
 
-const AddAssetOutput = z.object({
+const AddUploadOutput = z.object({
     projectId: z.string(),
-    asset: AssetSchema,
+    upload: UploadSchema,
 });
 
 /**
- * System-owned write path for WorkspaceState.assets. NOT attached to agents.
+ * System-owned write path for WorkspaceState.uploads. NOT attached to agents.
  */
-export const addAsset = createTool({
-    id: "addAsset",
-    description: "Append one uploaded image asset to thread-scoped workspace state.",
-    inputSchema: AddAssetInput,
-    outputSchema: AddAssetOutput,
-    execute: async ({ projectId, role, asset }) => {
+export const addUpload = createTool({
+    id: "addUpload",
+    description: "Append one uploaded file to thread-scoped workspace state.",
+    inputSchema: AddUploadInput,
+    outputSchema: AddUploadOutput,
+    execute: async ({ projectId, role, upload }) => {
         if (role !== "system") {
-            throw new Error("addAsset requires system role");
+            throw new Error("addUpload requires system role");
         }
 
-        const nextAsset = await appendAsset({ projectId, asset });
+        const nextUpload = await appendUpload({ projectId, upload });
 
         return {
             projectId,
-            asset: nextAsset,
+            upload: nextUpload,
         };
     },
 });

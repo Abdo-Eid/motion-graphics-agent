@@ -10,8 +10,8 @@ export type ActivityEvent =
   | { type: 'agent.end'; agent: AgentId; ts: number }
   | { type: 'agent.error'; agent: AgentId; error: string; ts: number }
   | { type: 'workspace.file'; path: string; change: 'add' | 'change' | 'unlink'; ts: number }
-  | { type: 'upload.status'; assetId: string; status: IngestStatus; ts: number }
-  | { type: 'service.health'; service: 'mastra' | 'sandbox'; ok: boolean; ts: number }
+  | { type: 'upload.status'; assetId: string; status: IngestStatus; path?: string; originalName?: string; mime?: string; ts: number }
+  | { type: 'service.health'; service: 'mastra'; ok: boolean; ts: number }
 
 export type ActivityConnection = 'connecting' | 'open' | 'closed'
 

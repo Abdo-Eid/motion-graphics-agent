@@ -8,12 +8,13 @@
         "mastra"
     ],
     "scripts": {
-        "dev": "bun run dev:mastra & bun run dev:web",
+        "dev": "concurrently \"bun run dev:mastra\" \"bun run dev:web\"",
         "dev:web": "cd web && bun --env-file=../.env run dev",
         "dev:mastra": "cd mastra && bun --env-file=../.env run dev"
     },
     "devDependencies": {
-        "@types/bun": "latest"
+        "@types/bun": "latest",
+        "concurrently": "^9.2.1"
     },
     "peerDependencies": {
         "typescript": "^5"

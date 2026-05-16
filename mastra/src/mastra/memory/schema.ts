@@ -24,12 +24,13 @@ export const SceneRecordSchema = z.object({
     design: z.unknown().optional(),
 });
 
-export const AssetSchema = z.object({
+export const UploadSchema = z.object({
     id: z.string(),
     path: z.string(),
     originalName: z.string(),
     mime: z.string(),
     bytes: z.number().int().nonnegative(),
+    kind: z.enum(["asset", "reference"]).optional(),
     description: z.string().default(""),
     createdAt: z.string().describe("ISO 8601 timestamp"),
 });
@@ -43,11 +44,12 @@ export const WorkspaceStateSchema = z.object({
     brief: BriefSchema.optional(),
     styleContext: StyleContextSchema.optional(),
     sceneRegistry: z.array(SceneRecordSchema).default([]),
-    assets: z.array(AssetSchema).default([]),
+    uploads: z.array(UploadSchema).default([]),
+    assets: z.array(UploadSchema).optional(),
 });
 
 export type Brief = z.infer<typeof BriefSchema>;
 export type StyleContext = z.infer<typeof StyleContextSchema>;
 export type SceneRecord = z.infer<typeof SceneRecordSchema>;
-export type Asset = z.infer<typeof AssetSchema>;
+export type Upload = z.infer<typeof UploadSchema>;
 export type WorkspaceState = z.infer<typeof WorkspaceStateSchema>;

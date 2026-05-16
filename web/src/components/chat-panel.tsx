@@ -16,6 +16,13 @@ type ChatEntry =
   | { id: string; role: 'user' | 'assistant' | 'system'; content: string }
   | { id: string; role: 'upload'; fileName: string; assetId: string | null; status: IngestStatus; error?: string }
 
+type UploadedFile = {
+  assetId: string
+  originalName: string
+  path: string
+  mime?: string
+}
+
 const INITIAL_MESSAGES: ChatEntry[] = [
   {
     id: 'welcome',
@@ -36,9 +43,23 @@ function uploadStatusFor(assetId: string | null, events: ActivityEvent[], fallba
   return event?.status ?? fallback
 }
 
+function messageWithUploadContext(text: string, uploads: UploadedFile[]) {
+  if (uploads.length === 0) {
+    return text
+  }
+
+  const uploadLines = uploads.map((upload) => {
+    const mime = upload.mime ? ` (${upload.mime})` : ''
+    return `- User uploaded "${upload.originalName}" at "${upload.path}"${mime}.`
+  })
+
+  return `${uploadLines.join('\n')}\n\nUser request:\n${text}`
+}
+
 export function ChatPanel({ t, projectId, events }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatEntry[]>(INITIAL_MESSAGES)
   const [input, setInput] = useState('')
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
   const [dragging, setDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
@@ -54,6 +75,8 @@ export function ChatPanel({ t, projectId, events }: ChatPanelProps) {
       return
     }
 
+    const content = messageWithUploadContext(text, uploadedFiles)
+
     setInput('')
     setMessages((current) => [...current, { id: crypto.randomUUID(), role: 'user', content: text }])
 
@@ -61,7 +84,13 @@ export function ChatPanel({ t, projectId, events }: ChatPanelProps) {
       const response = await fetch(new URL('/api/agents/planner-agent/stream', getMastraUrl()), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [{ role: 'user', content: text }], projectId }),
+        body: JSON.stringify({
+          messages: [{ role: 'user', content }],
+          projectId,
+          threadId: projectId,
+          resourceId: projectId,
+          memory: { thread: projectId, resource: projectId },
+        }),
       })
 
       if (!response.ok) {
@@ -111,10 +140,21 @@ export function ChatPanel({ t, projectId, events }: ChatPanelProps) {
 
       try {
         const result = await uploadProjectFile(projectId, file)
+        if (result.path) {
+          setUploadedFiles((current) => [
+            ...current,
+            {
+              assetId: result.assetId,
+              originalName: result.originalName ?? file.name,
+              path: result.path,
+              mime: result.mime ?? file.type,
+            },
+          ])
+        }
         setMessages((current) =>
           current.map((message) =>
             message.id === rowId && message.role === 'upload'
-              ? { ...message, assetId: result.assetId, status: 'pending' }
+              ? { ...message, assetId: result.assetId, status: result.ingestStatus === 'done' ? 'done' : 'pending' }
               : message,
           ),
         )

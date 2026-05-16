@@ -4,8 +4,15 @@ import { artDirectorAgent } from "./agents/art-director";
 import { implementorAgent } from "./agents/implementor";
 import { plannerAgent } from "./agents/planner";
 import { memory, storage } from "./memory";
+import { eventRoutes } from "./server/event-routes";
+import { workspaceRoutes } from "./server/workspace-routes";
+import { startWorkspaceWatcher } from "./server/workspace-watch";
 import { uploadRoutes } from "./uploads/router";
 import { createStudioAttachmentMiddleware } from "./uploads/studio-bridge";
+
+void startWorkspaceWatcher().catch(error => {
+  console.error('Workspace watcher failed to start', error);
+});
 
 export const mastra = new Mastra({
   storage,
@@ -22,7 +29,11 @@ export const mastra = new Mastra({
     workspace: memory,
   },
   server: {
-    apiRoutes: uploadRoutes,
+    apiRoutes: [
+      ...uploadRoutes,
+      ...workspaceRoutes,
+      ...eventRoutes,
+    ],
     middleware: [
       {
         // Intercepts Studio Playground attachment uploads on the agent

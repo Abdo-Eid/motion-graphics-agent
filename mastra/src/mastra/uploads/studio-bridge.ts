@@ -17,6 +17,7 @@
  * upload path that this temporarily complements.
  */
 import { detectHandlerKind, ingestUpload } from './ingest';
+import { bus } from '../server/bus';
 
 // Hono is a transitive dep of @mastra/core; we don't depend on it directly.
 // Define just enough shape to type the middleware we hand back to Mastra.
@@ -81,6 +82,9 @@ export function createStudioAttachmentMiddleware(): StudioMiddleware {
 function pickProjectId(body: Record<string, unknown>): string | null {
   const memory = body.memory as { thread?: unknown; resource?: unknown } | undefined;
   const candidate =
+    (typeof body.projectId === 'string' && body.projectId) ||
+    (typeof body.threadId === 'string' && body.threadId) ||
+    (typeof body.resourceId === 'string' && body.resourceId) ||
     (typeof memory?.thread === 'string' && memory.thread) ||
     (typeof memory?.resource === 'string' && memory.resource) ||
     null;
@@ -152,21 +156,35 @@ async function ingestOne(args: { projectId: string; file: FoundFile }): Promise<
 
   const fileObj = new File([bytes], file.filename, { type: mime });
   const assetId = crypto.randomUUID();
+  bus.emitEvent('upload.status', { projectId, assetId, status: 'pending', originalName: file.filename, mime });
 
-  const result = await ingestUpload({
-    assetId,
-    projectId,
-    file: fileObj,
-    originalName: file.filename,
-    mime,
-  });
+  try {
+    const result = await ingestUpload({
+      assetId,
+      projectId,
+      file: fileObj,
+      originalName: file.filename,
+      mime,
+    });
+    bus.emitEvent('upload.status', {
+      projectId,
+      assetId: result.assetId,
+      status: result.ingestStatus,
+      path: result.path,
+      originalName: result.originalName,
+      mime: result.mime,
+    });
 
-  console.info('[studio-bridge] ingested studio attachment', {
-    projectId,
-    filename: file.filename,
-    mime,
-    ingestStatus: result.ingestStatus,
-  });
+    console.info('[studio-bridge] ingested studio attachment', {
+      projectId,
+      filename: file.filename,
+      mime,
+      ingestStatus: result.ingestStatus,
+    });
+  } catch (error) {
+    bus.emitEvent('upload.status', { projectId, assetId, status: 'errored', originalName: file.filename, mime });
+    throw error;
+  }
 }
 
 function decodeDataPayload(

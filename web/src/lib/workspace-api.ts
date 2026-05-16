@@ -48,5 +48,12 @@ export async function uploadProjectFile(projectId: string, file: File) {
     throw new Error(`${response.status} ${response.statusText}`)
   }
 
-  return response.json() as Promise<{ assetId: string; ingestStatus?: string }>
+  return response.json() as Promise<{
+    assetId: string
+    ingestStatus?: string
+    path?: string
+    originalName?: string
+    mime?: string
+    bytes?: number
+  }>
 }

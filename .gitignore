@@ -6,8 +6,8 @@ node_modules/
 .env.*
 !.env.example
 
-# sandbox runtime workspace (user uploads, generated Remotion code, renders)
-sandbox/.workspace/
+# Mastra runtime workspace (user uploads, generated Remotion code, renders)
+mastra/.workspace/
 
 # local databases — LibSQL / SQLite (memory + knowledge store)
 mastra/data/

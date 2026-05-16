@@ -1,6 +1,7 @@
 ﻿import { randomUUID } from 'node:crypto';
 import type { ApiRoute } from '@mastra/core/server';
 
+import { bus } from '../server/bus';
 import { detectHandlerKind, ingestUpload } from './ingest';
 
 export const uploadRoutes: ApiRoute[] = [
@@ -29,23 +30,50 @@ export const uploadRoutes: ApiRoute[] = [
         return c.json({ error: `Unsupported upload type: ${file.type || 'unknown'} (${file.name})` }, 415);
       }
 
+      const cleanProjectId = projectId.trim();
       const assetId = randomUUID();
+      bus.emitEvent('upload.status', {
+        projectId: cleanProjectId,
+        assetId,
+        status: 'pending',
+        originalName: file.name,
+        mime: file.type,
+      });
 
       try {
         const result = await ingestUpload({
           assetId,
-          projectId: projectId.trim(),
+          projectId: cleanProjectId,
           file,
           originalName: file.name,
           mime: file.type,
           kind,
         });
+        bus.emitEvent('upload.status', {
+          projectId: cleanProjectId,
+          assetId: result.assetId,
+          status: result.ingestStatus,
+          path: result.path,
+          originalName: result.originalName,
+          mime: result.mime,
+        });
 
         return c.json({
           assetId: result.assetId,
           ingestStatus: result.ingestStatus,
+          path: result.path,
+          originalName: result.originalName,
+          mime: result.mime,
+          bytes: result.bytes,
         });
       } catch (error) {
+        bus.emitEvent('upload.status', {
+          projectId: cleanProjectId,
+          assetId,
+          status: 'errored',
+          originalName: file.name,
+          mime: file.type,
+        });
         return c.json({
           assetId,
           ingestStatus: 'errored' as const,
