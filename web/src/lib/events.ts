@@ -6,7 +6,7 @@ export type IngestStatus = 'pending' | 'done' | 'errored'
 export type ActivityEvent =
   | { type: 'agent.start'; agent: AgentId; ts: number }
   | { type: 'agent.message'; agent: AgentId; text: string; ts: number }
-  | { type: 'agent.tool'; agent: AgentId; tool: string; ts: number }
+  | { type: 'agent.tool'; agent: AgentId; tool: string; input: unknown; output?: unknown; ts: number }
   | { type: 'agent.end'; agent: AgentId; ts: number }
   | { type: 'agent.error'; agent: AgentId; error: string; ts: number }
   | { type: 'workspace.file'; path: string; change: 'add' | 'change' | 'unlink'; ts: number }

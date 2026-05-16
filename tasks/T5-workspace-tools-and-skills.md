@@ -30,7 +30,7 @@ Use one workspace root for uploads, generated files, preview routes, and Workspa
 Rules:
 
 - `WORKSPACE_PATH` can override the workspace root.
-- If unset, default to a gitignored `.workspace` directory owned by the Mastra package.
+- If unset, default to `mastra/.workspace` — tracked by the main repo. Each `dev:mastra` start resets it to the committed baseline via `git checkout`.
 - Upload handlers write `assets/` and `uploads/`.
 - Implementor writes generated code under `src/` and build artifacts under `out/`.
 - Raw uploads are inputs. Do not mutate uploaded files in place.
@@ -43,26 +43,22 @@ Only Implementor receives file and command tools.
 - Art Director: no filesystem tools, no command tools.
 - Implementor: full execution tool surface.
 
-Expected generic names:
+Mastra's Workspace tools are prefixed with `mastra_workspace_` at runtime, but the agent instructions should use the generic conceptual names below. The agent will understand either form. The conceptual tool surface is:
 
-- `read_file`
-- `write_file`
-- `edit_file`
-- `list_files`
-- `grep`
-- `exec_command`
-- `list_skills`
-- `load_skill`
+- `list_files` — list directory contents
+- `read_file` — read file contents
+- `write_file` — create or overwrite a file
+- `edit_file` — make targeted edits to an existing file
+- `grep` — search file contents by pattern
+- `exec_command` — run shell commands in the workspace
 
-Background command tools are optional for the first checkpoint. If enabled, keep names generic (`check_background`, `kill_background`) and document how they map to Mastra Workspace's process tools.
-
-Use Mastra's Workspace name-remapping config instead of teaching the agent provider-specific `mastra_workspace_*` names.
+Background command tools are optional for the first checkpoint.
 
 ## Skill Docs
 
-Skills are short, opinionated markdown files. They are not uploaded user knowledge and are not part of the vector Knowledge Store.
+**In progress.** The skill directory and markdown files have not been created yet. The `workspace-config.ts` declares `skills: ['skills']` and the Implementor instructions reference `skill`, `skill_search`, and `skill_read`, but the actual skill files are deferred.
 
-V1 skill set:
+Planned v1 skill set:
 
 | File | Covers |
 |---|---|
@@ -84,7 +80,7 @@ Authoring rules:
 Update `mastra/src/mastra/agents/implementor.ts` so it says:
 
 - Workspace tools are attached directly by the Mastra server.
-- Use `list_skills` / `load_skill` before editing when a skill is relevant.
+- Use `skill_search` / `skill` before editing when a skill is relevant.
 - Use `list_files` before assuming project structure.
 - Use `read_file` before editing an existing file.
 - Prefer targeted edits over full rewrites.
@@ -98,10 +94,10 @@ Remove any wording that says tools come from a separate service.
 Run Mastra:
 
 ```bash
-bun run dev:mastra
+bun run dev
 ```
 
-From Studio or the Implementor chat endpoint, ask:
+From Mastra Studio or the Implementor chat endpoint, ask:
 
 ```text
 List files in the workspace, write hello.txt with the content hi, then run node --version.
@@ -114,7 +110,7 @@ Expected:
 - Implementor invokes `exec_command` and reports the Node version.
 - Planner and Art Director do not have these tools attached.
 
-Skill checkpoint:
+Skill checkpoint (deferred until skill files are created):
 
 ```text
 List available skills, then load the kinetic typography skill.
@@ -122,15 +118,14 @@ List available skills, then load the kinetic typography skill.
 
 Expected:
 
-- `list_skills` returns the v1 skill list.
-- `load_skill` returns the requested markdown body.
+- `skill_search` returns the v1 skill list.
+- `skill` returns the requested skill body.
 
 ## Constraints
 
 - No second service.
 - No MCP transport.
 - No Docker.
-- No provider-specific tool names in agent instructions.
 - Do not attach Workspace tools to Planner or Art Director.
 - Do not give Implementor Knowledge Store retrieval.
 

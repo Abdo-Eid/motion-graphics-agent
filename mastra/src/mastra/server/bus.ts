@@ -4,6 +4,8 @@ export type BusEvent =
   | { type: 'agent.start'; agent: string; projectId?: string; input?: unknown }
   | { type: 'agent.end'; agent: string; projectId?: string; output?: unknown }
   | { type: 'agent.error'; agent: string; projectId?: string; error: string }
+  | { type: 'agent.message'; agent: string; projectId?: string; text: string }
+  | { type: 'agent.tool'; agent: string; projectId?: string; tool: string; input: unknown; output?: unknown }
   | { type: 'workspace.file'; path: string; change: 'add' | 'change' | 'unlink' }
   | { type: 'upload.status'; projectId: string; assetId: string; status: 'pending' | 'done' | 'errored'; path?: string; originalName?: string; mime?: string }
   | { type: 'service.health'; service: 'mastra'; ok: boolean }
@@ -16,15 +18,10 @@ export type BusPayload<T extends BusEventType> = Omit<Extract<BusEvent, { type: 
 export type BusListener<T extends BusEventType> = (event: Extract<BusEvent, { type: T }>) => void;
 
 class ProjectBus extends EventEmitter {
-  // Typed emit. The generic `T` is captured from the call site so
-  // `Extract<BusEvent, { type: T }>` narrows to a single event variant
-  // and `data` is the exact payload for that variant.
   emitEvent<T extends BusEventType>(type: T, data: BusPayload<T>): boolean {
     return super.emit(type, { type, ...data } as Extract<BusEvent, { type: T }>);
   }
 
-  // Typed `on`. Listener receives the full discriminated event object
-  // (including `type`), so consumers can switch on it if desired.
   onEvent<T extends BusEventType>(type: T, listener: BusListener<T>): this {
     return super.on(type, listener as (event: unknown) => void);
   }

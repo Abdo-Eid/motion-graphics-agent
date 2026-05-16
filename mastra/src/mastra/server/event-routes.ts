@@ -7,7 +7,7 @@ type ActivityAgentId = 'planner' | 'art-director' | 'implementor';
 type ActivityEvent =
   | { type: 'agent.start'; agent: ActivityAgentId; ts: number }
   | { type: 'agent.message'; agent: ActivityAgentId; text: string; ts: number }
-  | { type: 'agent.tool'; agent: ActivityAgentId; tool: string; ts: number }
+  | { type: 'agent.tool'; agent: ActivityAgentId; tool: string; input: unknown; output?: unknown; ts: number }
   | { type: 'agent.end'; agent: ActivityAgentId; ts: number }
   | { type: 'agent.error'; agent: ActivityAgentId; error: string; ts: number }
   | { type: 'workspace.file'; path: string; change: 'add' | 'change' | 'unlink'; ts: number }
@@ -18,6 +18,8 @@ const streamedEventTypes: BusEventType[] = [
   'agent.start',
   'agent.end',
   'agent.error',
+  'agent.message',
+  'agent.tool',
   'workspace.file',
   'upload.status',
   'service.health',
@@ -54,6 +56,14 @@ function toActivityEvent(event: BusEvent): ActivityEvent | null {
     case 'agent.error': {
       const agent = normalizeAgentId(event.agent);
       return agent ? { type: 'agent.error', agent, error: event.error, ts } : null;
+    }
+    case 'agent.message': {
+      const agent = normalizeAgentId(event.agent);
+      return agent ? { type: 'agent.message', agent, text: event.text, ts } : null;
+    }
+    case 'agent.tool': {
+      const agent = normalizeAgentId(event.agent);
+      return agent ? { type: 'agent.tool', agent, tool: event.tool, input: event.input, output: event.output, ts } : null;
     }
     case 'workspace.file':
       return { type: 'workspace.file', path: event.path, change: event.change, ts };

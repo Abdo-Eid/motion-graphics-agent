@@ -8,6 +8,7 @@ import { memory } from '../memory';
 import { setBrief } from '../memory/access';
 import { agentModel } from '../model';
 import { bus } from '../server/bus';
+import { createToolCallTracker } from '../server/tool-call-tracker';
 import { artDirectorAgent } from './art-director';
 import { implementorAgent } from './implementor';
 
@@ -79,6 +80,7 @@ You never write code, never read/write files, and never use Workspace tools dire
     artDirector: artDirectorAgent,
     implementor: implementorAgent,
   },
+  outputProcessors: [createToolCallTracker('planner')],
   defaultOptions: {
     maxSteps: 20,
     delegation: {
@@ -93,19 +95,30 @@ You never write code, never read/write files, and never use Workspace tools dire
       },
 
       onDelegationComplete: async (context: DelegationCompleteContext) => {
+        const projectId = projectIdFromDelegationContext(context);
+
         if (context.error) {
           bus.emitEvent('agent.error', {
             agent: context.primitiveId,
-            projectId: projectIdFromDelegationContext(context),
+            projectId,
             error: context.error.message,
           });
           return;
         }
 
+        const outputText = context.result.text;
+        if (outputText) {
+          bus.emitEvent('agent.message', {
+            agent: context.primitiveId,
+            projectId,
+            text: outputText,
+          });
+        }
+
         bus.emitEvent('agent.end', {
           agent: context.primitiveId,
-          projectId: projectIdFromDelegationContext(context),
-          output: context.result.text,
+          projectId,
+          output: outputText,
         });
       },
     },

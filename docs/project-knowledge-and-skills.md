@@ -81,7 +81,7 @@ Rules:
 - Raw uploads are inputs, not working files; the Implementor copies or transforms before mutating.
 - The Knowledge Store (chunks + embeddings) lives in the LibSQL DB at `mastra/mastra.db`, not on disk under the workspace.
 
-The workspace-root path should be resolved by the Mastra server. `WORKSPACE_PATH` can override it; otherwise use a gitignored `.workspace` directory owned by the Mastra package. The LibSQL URL is hardcoded as `file:./mastra.db` in both `mastra/src/mastra/memory/index.ts` and `mastra/src/mastra/knowledge/store.ts`. Neither requires an env var.
+The workspace-root path should be resolved by the Mastra server. `WORKSPACE_PATH` can override it; otherwise use `mastra/.workspace`, which is tracked by the main repo and reset to the committed baseline on each `dev:mastra` start. The LibSQL URL is hardcoded as `file:./mastra.db` in both `mastra/src/mastra/memory/index.ts` and `mastra/src/mastra/knowledge/store.ts`. Neither requires an env var.
 
 ---
 

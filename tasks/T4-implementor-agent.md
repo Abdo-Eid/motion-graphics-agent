@@ -2,7 +2,7 @@
 
 > **Architecture note.** Invoked as a subagent by the Planner via the auto-generated `agent-implementor` tool (Mastra supervisor pattern). See [`T2-planner-agent.md`](T2-planner-agent.md) for supervisor and delegation-hook wiring.
 >
-> **Status:** Core skeleton exists. Direct Mastra Workspace tool attachment and skill loading are split into [`T5-workspace-tools-and-skills.md`](T5-workspace-tools-and-skills.md).
+> **Status:** Workspace tools attached directly to the Implementor via `workspace-config.ts`. Skill files are deferred (see [`T5-workspace-tools-and-skills.md`](T5-workspace-tools-and-skills.md)).
 
 ## Your Role
 
@@ -67,24 +67,22 @@ Implementation rules:
 
 ## Tools
 
-The Implementor uses Mastra Workspace tools directly inside the Mastra server. The concrete tool wiring is specified in [`T5-workspace-tools-and-skills.md`](T5-workspace-tools-and-skills.md).
+The Implementor uses Mastra Workspace tools directly inside the Mastra server. The concrete tool wiring is in [`T5-workspace-tools-and-skills.md`](T5-workspace-tools-and-skills.md).
 
 Only the Implementor gets file and command tools. Planner and Art Director do not.
 
-The expected generic tool surface is:
+Mastra prefixes Workspace tool names with `mastra_workspace_` at runtime, but the agent instructions use the generic conceptual names:
 
+- `list_files`
 - `read_file`
 - `write_file`
 - `edit_file`
-- `list_files`
 - `grep`
 - `exec_command`
-- `get_process_output` or a project-specific `check_background` wrapper if background commands are enabled
-- `kill_process` or a project-specific `kill_background` wrapper if background commands are enabled
-- `list_skills`
-- `load_skill`
-
-Tool names should remain generic even though they are backed by `@mastra/core/workspace`.
+- `get_process_output` / `kill_process` (if background commands are enabled)
+- `skill`
+- `skill_search`
+- `skill_read`
 
 The Implementor uses `readOnlyMemory` and is not given role-guarded memory-write tools from `memory/access.ts`.
 
@@ -93,16 +91,16 @@ The Implementor uses `readOnlyMemory` and is not given role-guarded memory-write
 Run:
 
 ```bash
-bun run dev:mastra
+bun run dev
 ```
 
-Test in Studio or via chat endpoint:
+Test in Mastra Studio or via chat endpoint:
 
-```powershell
-curl -X POST http://localhost:4111/chat/implementor-agent -H "Content-Type: application/json" -d "{\"messages\":[{\"role\":\"user\",\"content\":\"List files in the workspace, write hello.txt with the content hi, then run node --version.\"}]}"
+```text
+List files in the workspace, write hello.txt with the content hi, then run node --version.
 ```
 
-Expected: Implementor invokes workspace tools, creates the file under the workspace root, and reports the command result.
+Expected: Implementor invokes `list_files`, creates the file under the workspace root via `write_file`, and reports the command result from `exec_command`.
 
 ## Reference
 

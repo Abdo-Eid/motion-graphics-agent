@@ -13,7 +13,7 @@ type ChatPanelProps = {
 }
 
 type ChatEntry =
-  | { id: string; role: 'user' | 'assistant' | 'system'; content: string }
+  | { id: string; role: 'user' | 'assistant' | 'system'; content: string; agent?: 'planner' | 'art-director' | 'implementor' }
   | { id: string; role: 'upload'; fileName: string; assetId: string | null; status: IngestStatus; error?: string }
 
 type UploadedFile = {
@@ -47,7 +47,7 @@ function isChatEntry(value: unknown): value is ChatEntry {
   }
 
   if (candidate.role === 'user' || candidate.role === 'assistant' || candidate.role === 'system') {
-    return typeof candidate.content === 'string'
+    return typeof candidate.content === 'string' && (candidate.agent === undefined || typeof candidate.agent === 'string')
   }
 
   return candidate.role === 'upload'
@@ -171,6 +171,23 @@ export function ChatPanel({ t, projectId, events }: ChatPanelProps) {
   }, [projectId])
 
   useEffect(() => () => abortRef.current?.abort(), [])
+
+  useEffect(() => {
+    const agentMessages = events
+      .filter((e): e is Extract<ActivityEvent, { type: 'agent.message' }> => e.type === 'agent.message')
+
+    for (const msg of agentMessages) {
+      const entryId = `event-${msg.ts}-${msg.agent}`
+      const alreadyExists = messages.some(m => m.id === entryId)
+
+      if (!alreadyExists && msg.text.trim()) {
+        setMessages(current => [
+          ...current,
+          { id: entryId, role: 'assistant', content: msg.text.trim(), agent: msg.agent },
+        ])
+      }
+    }
+  }, [events, messages])
 
   const submitMessage = async () => {
     const text = input.trim()
@@ -365,7 +382,13 @@ export function ChatPanel({ t, projectId, events }: ChatPanelProps) {
               error={message.error}
             />
           ) : (
-            <ChatRow key={message.id} t={t} role={message.role} content={message.content} />
+            <ChatRow
+              key={message.id}
+              t={t}
+              role={message.role}
+              content={message.content}
+              agent={'agent' in message ? message.agent : undefined}
+            />
           ),
         )}
       </div>
@@ -409,7 +432,7 @@ export function ChatPanel({ t, projectId, events }: ChatPanelProps) {
               background: 'transparent',
               border: 'none',
               outline: 'none',
-              fontSize: 12,
+              fontSize: 14,
               color: t.text,
               fontFamily: t.font,
               opacity: isStreaming ? 0.6 : 1,
@@ -461,20 +484,22 @@ export function ChatPanel({ t, projectId, events }: ChatPanelProps) {
   )
 }
 
-function ChatRow({ t, role, content }: { t: Theme; role: 'user' | 'assistant' | 'system'; content: string }) {
+function ChatRow({ t, role, content, agent }: { t: Theme; role: 'user' | 'assistant' | 'system'; content: string; agent?: 'planner' | 'art-director' | 'implementor' }) {
   const isUser = role === 'user'
-  const color = role === 'system' ? t.textMuted : isUser ? t.accent : AGENT_COLORS.Planner
+  const agentLabel = agent === 'art-director' ? 'Art Director' : agent === 'implementor' ? 'Implementor' : 'Planner'
+  const colorKey = agent === 'art-director' ? 'Art Director' : agent === 'implementor' ? 'Implementor' : 'Planner'
+  const color = role === 'system' ? t.textMuted : isUser ? t.accent : AGENT_COLORS[colorKey]
 
   return (
     <div style={{ padding: '4px 14px', minWidth: 0, overflowWrap: 'anywhere' }}>
-      <div style={{ fontSize: 11, color, fontFamily: t.monoFont, marginBottom: 4 }}>
-        {isUser ? 'you' : role}
+      <div style={{ fontSize: 12, color, fontFamily: t.monoFont, marginBottom: 4 }}>
+        {isUser ? 'you' : agentLabel}
       </div>
       <div
         style={{
-          fontSize: 12,
+          fontSize: 14,
           color: isUser || role === 'system' ? t.textMuted : t.text,
-          lineHeight: 1.45,
+          lineHeight: 1.5,
           fontStyle: isUser ? 'italic' : 'normal',
         }}
       >

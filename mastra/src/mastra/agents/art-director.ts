@@ -3,12 +3,13 @@ import { retrieveProjectKnowledge } from '../knowledge/retrieve';
 import { memory } from '../memory';
 import { setSceneDesign, setStyleContext } from '../memory/access';
 import { agentModel } from '../model';
+import { createToolCallTracker } from '../server/tool-call-tracker';
 
 export const artDirectorAgent = new Agent({
   id: 'art-director-agent',
   name: 'Art Director',
   description: `Designs scenes: layout, palette, typography, pacing, motion direction.
-    Reads brief and current styleContext, writes styleContext and sceneRegistry[n].design.
+    Reads finalized scene design + styleContext and uses Mastra Workspace tools when available.
     Use when the request needs new creative direction (feel, layout, style change, new scenes).
     Can ask the user creative questions directly when direction is missing.`,
   instructions: `
@@ -41,4 +42,5 @@ USER INTERACTION:
     setSceneDesign,
     retrieveProjectKnowledge,
   },
+  outputProcessors: [createToolCallTracker('art-director')],
 });

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { ActivityConnection, ActivityEvent, AgentId } from '../lib/events'
 import { AGENT_COLORS, type Theme } from '../theme/themes'
 
@@ -20,33 +21,61 @@ function eventLane(event: ActivityEvent): LaneId {
   return 'agent' in event ? event.agent : 'system'
 }
 
-function eventText(event: ActivityEvent) {
-  switch (event.type) {
-    case 'agent.start':
-      return 'started'
-    case 'agent.message':
-      return event.text
-    case 'agent.tool':
-      return `tool: ${event.tool}`
-    case 'agent.end':
-      return 'finished'
-    case 'agent.error':
-      return event.error
-    case 'workspace.file':
-      return `${event.change}: ${event.path}`
-    case 'upload.status':
-      return `upload ${event.assetId}: ${event.status}`
-    case 'service.health':
-      return `${event.service}: ${event.ok ? 'online' : 'offline'}`
-  }
-}
-
 function formatTime(ts: number) {
   return new Intl.DateTimeFormat(undefined, {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
   }).format(ts)
+}
+
+function ToolCallRow({ t, event }: { t: Theme; event: ActivityEvent & { type: 'agent.tool' } }) {
+  const [expanded, setExpanded] = useState(false)
+
+  return (
+    <div style={{ padding: '3px 14px 3px 27px' }}>
+      <div
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          cursor: 'pointer',
+          padding: '3px 6px',
+          borderRadius: 4,
+          background: expanded ? t.tagBg : 'transparent',
+        }}
+      >
+        <span style={{ fontSize: 9, color: t.textDim, fontFamily: t.monoFont, flexShrink: 0 }}>
+          {expanded ? '▼' : '▶'}
+        </span>
+        <span style={{ fontSize: 10, color: AGENT_COLORS[event.agent] || t.textMuted, fontFamily: t.monoFont }}>
+          {event.tool}
+        </span>
+        <span style={{ fontSize: 9, color: t.textDim, fontFamily: t.monoFont, flexShrink: 0, marginLeft: 'auto' }}>
+          {formatTime(event.ts)}
+        </span>
+      </div>
+      {expanded && (
+        <div style={{ padding: '6px 6px 6px 22px', fontSize: 10, fontFamily: t.monoFont, color: t.textMuted, lineHeight: 1.5 }}>
+          <div style={{ marginBottom: 4 }}>
+            <span style={{ color: t.textDim }}>input:</span>
+            <pre style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 10 }}>
+              {typeof event.input === 'string' ? event.input : JSON.stringify(event.input, null, 2)}
+            </pre>
+          </div>
+          {event.output !== undefined && (
+            <div>
+              <span style={{ color: t.textDim }}>output:</span>
+              <pre style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 10 }}>
+                {typeof event.output === 'string' ? event.output : JSON.stringify(event.output, null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function ActivityPanel({ t, events, connection }: ActivityPanelProps) {
@@ -140,23 +169,111 @@ export function ActivityPanel({ t, events, connection }: ActivityPanelProps) {
                 {lane.label}
               </div>
 
-              {laneEvents.slice(-8).map((event) => (
-                <div
-                  key={`${event.type}-${event.ts}-${eventText(event)}`}
-                  style={{
-                    padding: '4px 14px 4px 27px',
-                    borderLeft:
-                      event.type === 'agent.error' ? '2px solid oklch(0.62 0.22 25)' : '2px solid transparent',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                    <span style={{ color: t.text, fontSize: 11, lineHeight: 1.4 }}>{eventText(event)}</span>
-                    <span style={{ color: t.textDim, fontSize: 9, fontFamily: t.monoFont, flexShrink: 0 }}>
-                      {formatTime(event.ts)}
-                    </span>
+              {laneEvents.slice(-20).map((event, i) => {
+                if (event.type === 'agent.tool') {
+                  return <ToolCallRow key={`${event.type}-${event.ts}-${i}`} t={t} event={event} />
+                }
+
+                if (event.type === 'agent.message') {
+                  return (
+                    <div
+                      key={`${event.type}-${event.ts}-${i}`}
+                      style={{
+                        padding: '4px 14px 4px 27px',
+                      }}
+                    >
+                      <div style={{ fontSize: 11, color: t.text, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+                        {event.text}
+                      </div>
+                    </div>
+                  )
+                }
+
+                if (event.type === 'agent.start') {
+                  return (
+                    <div
+                      key={`${event.type}-${event.ts}-${i}`}
+                      style={{
+                        padding: '4px 14px 4px 27px',
+                        fontSize: 10,
+                        color: lane.color,
+                        fontFamily: t.monoFont,
+                        fontStyle: 'italic',
+                      }}
+                    >
+                      started
+                    </div>
+                  )
+                }
+
+                if (event.type === 'agent.end') {
+                  return (
+                    <div
+                      key={`${event.type}-${event.ts}-${i}`}
+                      style={{
+                        padding: '4px 14px 4px 27px',
+                        fontSize: 10,
+                        color: 'oklch(0.72 0.18 155)',
+                        fontFamily: t.monoFont,
+                        fontStyle: 'italic',
+                      }}
+                    >
+                      finished
+                    </div>
+                  )
+                }
+
+                if (event.type === 'agent.error') {
+                  return (
+                    <div
+                      key={`${event.type}-${event.ts}-${i}`}
+                      style={{
+                        padding: '4px 14px 4px 27px',
+                        borderLeft: '2px solid oklch(0.62 0.22 25)',
+                      }}
+                    >
+                      <div style={{ fontSize: 11, color: 'oklch(0.62 0.22 25)', lineHeight: 1.4 }}>
+                        {event.error}
+                      </div>
+                    </div>
+                  )
+                }
+
+                if (event.type === 'workspace.file') {
+                  return (
+                    <div
+                      key={`${event.type}-${event.ts}-${i}`}
+                      style={{
+                        padding: '3px 14px 3px 27px',
+                        fontSize: 10,
+                        color: t.textDim,
+                        fontFamily: t.monoFont,
+                      }}
+                    >
+                      {event.change}: {event.path}
+                    </div>
+                  )
+                }
+
+                return (
+                  <div
+                    key={`${event.type}-${event.ts}-${i}`}
+                    style={{
+                      padding: '4px 14px 4px 27px',
+                      borderLeft: '2px solid transparent',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                      <span style={{ color: t.text, fontSize: 11, lineHeight: 1.4 }}>
+                        {event.type}
+                      </span>
+                      <span style={{ color: t.textDim, fontSize: 9, fontFamily: t.monoFont, flexShrink: 0 }}>
+                        {formatTime(event.ts)}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )
         })}

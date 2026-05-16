@@ -63,7 +63,7 @@ motion-graphics-agent/
 |  |  |- memory/               Workspace State
 |  |  |- uploads/              upload route + handlers
 |  |  `- index.ts              Mastra registration
-|  |- .workspace/              gitignored generated project files
+|  |- .workspace/              Remotion project (tracked, auto-reset on dev)
 |  `- README.md                Backend-specific notes
 |- docs/
 |  |- architecture.md
@@ -123,7 +123,7 @@ bun run dev:mastra   # http://localhost:4111
 
 ## Status
 
-The backend agent baseline is in place. Current direction is to run execution inside the Mastra server using Mastra Workspace tools.
+The backend agent baseline is in place with a working preview pipeline. The Mastra server runs under Bun, bundles Remotion scenes via `Bun.build`, and serves them to the frontend through an iframe-based Player. Tailwind CSS is loaded via CDN in the preview. Each `dev:mastra` start resets `.workspace/` to the committed baseline (`1483557`) so every session begins clean.
 
 ## License
 

@@ -90,7 +90,7 @@ The word "workspace" is overloaded. These are the important meanings:
 | Term | What it is | Where it lives |
 |---|---|---|
 | **Workspace State** | Structured project state (`brief`, `styleContext`, `sceneRegistry`, `assets`). Implemented as Mastra working memory with a zod schema, thread-scoped per project. | `mastra/src/mastra/memory/` |
-| **Workspace root** | Filesystem directory for generated Remotion files, uploads, assets, and build outputs. `WORKSPACE_PATH` can override it. | resolved by Mastra server |
+| **Workspace root** | Filesystem directory for generated Remotion files, uploads, assets, and build outputs. `WORKSPACE_PATH` can override it. Lives at `mastra/.workspace`, tracked by the main repo, auto-reset on each `dev:mastra` start. | `mastra/.workspace` |
 | **Mastra Workspace** | Framework feature from `@mastra/core/workspace` that provides file and command tools. The Implementor uses it directly. | `mastra/src/mastra/workspace-config.ts` |
 
 Additionally, "Bun workspaces" is the package-manager concept covering `web/` and `mastra/`.

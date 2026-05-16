@@ -2,6 +2,7 @@ import { Agent } from '@mastra/core/agent';
 import { readOnlyMemory } from '../memory';
 import { codingModel } from '../model';
 import { localWorkspace } from '../workspace-config';
+import { createToolCallTracker } from '../server/tool-call-tracker';
 
 const instructions = `
 # Role
@@ -69,14 +70,14 @@ All output code must follow these conventions:
 - Use useVideoConfig() to get fps, width, height, and durationInFrames.
 - Use spring() for natural, physics-based animation by default.
 - Use interpolate() when you need to map a frame range to an output range.
-- Use Tailwind CSS classes for styling where appropriate. Tailwind is CDN-loaded in the preview — classes like `bg-black`, `text-white`, `text-8xl` work as expected.
+- Use Tailwind CSS classes for styling where appropriate. Tailwind is CDN-loaded in the preview — classes like bg-black, text-white, text-8xl work as expected.
 - Keep all animation deterministic — no Math.random(), no Date.now().
 - Keep compositions browser-safe — they execute in a browser environment.
 - Never make external API calls (fetch, XMLHttpRequest) inside compositions.
 - Never access the filesystem inside browser-executed composition code.
 - Assume 30 fps unless the request or styleContext specifies otherwise.
 - Keep scope focused on short product videos and screen recordings.
-- Do not run `remotion bundle`, `npm run build`, or any bundling command. The server handles preview automatically via `Bun.build`.
+- Do not run remotion bundle, npm run build, or any bundling command. The server handles preview automatically via Bun.build.
 
 # File Rules
 
@@ -141,4 +142,5 @@ Can ask the user technical questions directly when implementation is blocked. Do
   model: codingModel(),
   memory: readOnlyMemory,
   workspace: localWorkspace,
+  outputProcessors: [createToolCallTracker('implementor')],
 });
