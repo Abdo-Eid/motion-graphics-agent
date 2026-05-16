@@ -6,10 +6,7 @@ node_modules/
 .env.*
 !.env.example
 
-# Mastra runtime workspace (user uploads, generated Remotion code, renders)
-mastra/.workspace/
-
-# local databases — LibSQL / SQLite (memory + knowledge store)
+# Mastra runtime databases and build output
 mastra/data/
 *.db
 *.db-journal
