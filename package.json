@@ -10,7 +10,7 @@
     "scripts": {
         "dev": "concurrently \"bun run dev:mastra\" \"bun run dev:web\"",
         "dev:web": "cd web && bun --env-file=../.env run dev",
-        "dev:mastra": "cd mastra && bun --env-file=../.env run dev"
+        "dev:mastra": "cd mastra/.workspace && git reset --hard && git clean -fd && cd ../.. && bun --bun --env-file=.env run dev"
     },
     "devDependencies": {
         "@types/bun": "latest",

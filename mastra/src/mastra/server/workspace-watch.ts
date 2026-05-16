@@ -30,6 +30,10 @@ export async function startWorkspaceWatcher(): Promise<void> {
       return;
     }
 
+    if (path.startsWith('.preview/') || path.startsWith('node_modules/') || path.startsWith('.git/') || path === 'bun.lock') {
+      return;
+    }
+
     bus.emitEvent('workspace.file', {
       path,
       change: eventType === 'rename' && !existsSync(resolve(workspaceRoot, path)) ? 'unlink' : eventType === 'rename' ? 'add' : 'change',

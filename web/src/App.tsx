@@ -10,10 +10,12 @@ import { THEMES } from './theme/themes'
 
 const PROJECT_ID = 'product-walkthrough'
 
+function isSourceFileEvent(path: string) {
+  return !path.startsWith('.preview/') && !path.startsWith('node_modules/') && !path.startsWith('.git/') && path !== 'bun.lock'
+}
+
 export default function App() {
   const [activeFile, setActiveFile] = useState<string | null>(null)
-  const [playing, setPlaying] = useState(false)
-  const [progress, setProgress] = useState(0.42)
   const [bottomOpen, setBottomOpen] = useState(true)
   const [activeTab, setActiveTab] = useState<BottomPanelTab>('files')
   const [dark, setDark] = useState(
@@ -23,7 +25,7 @@ export default function App() {
   const workspaceRevision = useMemo(
     () =>
       activity.events.reduce(
-        (latest, event) => (event.type === 'workspace.file' ? Math.max(latest, event.ts) : latest),
+        (latest, event) => event.type === 'workspace.file' && isSourceFileEvent(event.path) ? Math.max(latest, event.ts) : latest,
         0,
       ),
     [activity.events],
@@ -34,29 +36,6 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('theme', dark ? 'dark' : 'light')
   }, [dark])
-
-  useEffect(() => {
-    let raf = 0
-
-    if (playing) {
-      const step = () => {
-        setProgress((currentProgress) => {
-          if (currentProgress >= 1) {
-            setPlaying(false)
-            return 0
-          }
-
-          return currentProgress + 0.0022
-        })
-
-        raf = requestAnimationFrame(step)
-      }
-
-      raf = requestAnimationFrame(step)
-    }
-
-    return () => cancelAnimationFrame(raf)
-  }, [playing])
 
   return (
     <div
@@ -97,10 +76,7 @@ export default function App() {
         <ChatPanel t={t} projectId={PROJECT_ID} events={activity.events} />
         <PlayerPanel
           t={t}
-          playing={playing}
-          setPlaying={setPlaying}
-          progress={progress}
-          setProgress={setProgress}
+          projectId={PROJECT_ID}
           events={activity.events}
           revision={workspaceRevision}
         />

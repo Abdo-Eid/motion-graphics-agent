@@ -5,6 +5,7 @@ import { implementorAgent } from "./agents/implementor";
 import { plannerAgent } from "./agents/planner";
 import { memory, storage } from "./memory";
 import { eventRoutes } from "./server/event-routes";
+import { previewRoutes } from "./server/preview-routes";
 import { workspaceRoutes } from "./server/workspace-routes";
 import { startWorkspaceWatcher } from "./server/workspace-watch";
 import { uploadRoutes } from "./uploads/router";
@@ -32,6 +33,7 @@ export const mastra = new Mastra({
     apiRoutes: [
       ...uploadRoutes,
       ...workspaceRoutes,
+      ...previewRoutes,
       ...eventRoutes,
     ],
     middleware: [

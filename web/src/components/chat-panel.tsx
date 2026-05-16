@@ -31,6 +31,41 @@ const INITIAL_MESSAGES: ChatEntry[] = [
   },
 ]
 
+function chatStorageKey(projectId: string) {
+  return `motion-agent-chat:${projectId}`
+}
+
+function isChatEntry(value: unknown): value is ChatEntry {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const candidate = value as Partial<ChatEntry>
+
+  if (typeof candidate.id !== 'string' || typeof candidate.role !== 'string') {
+    return false
+  }
+
+  if (candidate.role === 'user' || candidate.role === 'assistant' || candidate.role === 'system') {
+    return typeof candidate.content === 'string'
+  }
+
+  return candidate.role === 'upload'
+    && typeof candidate.fileName === 'string'
+    && (typeof candidate.assetId === 'string' || candidate.assetId === null)
+    && (candidate.status === 'pending' || candidate.status === 'done' || candidate.status === 'errored')
+}
+
+function readStoredMessages(projectId: string): ChatEntry[] {
+  try {
+    const stored = localStorage.getItem(chatStorageKey(projectId))
+    const parsed: unknown = stored ? JSON.parse(stored) : null
+    return Array.isArray(parsed) && parsed.every(isChatEntry) ? parsed : INITIAL_MESSAGES
+  } catch {
+    return INITIAL_MESSAGES
+  }
+}
+
 function uploadStatusFor(assetId: string | null, events: ActivityEvent[], fallback: IngestStatus) {
   if (!assetId) {
     return fallback
@@ -56,34 +91,113 @@ function messageWithUploadContext(text: string, uploads: UploadedFile[]) {
   return `${uploadLines.join('\n')}\n\nUser request:\n${text}`
 }
 
+function appendAssistantDelta(current: ChatEntry[], id: string, delta: string): ChatEntry[] {
+  return current.map((message) =>
+    message.id === id && message.role === 'assistant'
+      ? { ...message, content: `${message.content}${delta}` }
+      : message,
+  )
+}
+
+function readMastraTextLine(line: string): string | null {
+  const trimmed = line.trim()
+
+  if (!trimmed.startsWith('0:')) {
+    return null
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(trimmed.slice(2))
+    return typeof parsed === 'string' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+async function streamAssistantText(response: Response, onDelta: (delta: string) => void) {
+  if (!response.body) {
+    return
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+
+    if (done) {
+      break
+    }
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split(/\r?\n/)
+    buffer = lines.pop() ?? ''
+
+    for (const line of lines) {
+      const delta = readMastraTextLine(line)
+      if (delta) {
+        onDelta(delta)
+      }
+    }
+  }
+
+  const finalDelta = readMastraTextLine(buffer)
+  if (finalDelta) {
+    onDelta(finalDelta)
+  }
+}
+
 export function ChatPanel({ t, projectId, events }: ChatPanelProps) {
-  const [messages, setMessages] = useState<ChatEntry[]>(INITIAL_MESSAGES)
+  const [messages, setMessages] = useState<ChatEntry[]>(() => readStoredMessages(projectId))
   const [input, setInput] = useState('')
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
   const [dragging, setDragging] = useState(false)
+  const [isStreaming, setIsStreaming] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
   }, [messages, events])
 
+  useEffect(() => {
+    localStorage.setItem(chatStorageKey(projectId), JSON.stringify(messages))
+  }, [messages, projectId])
+
+  useEffect(() => {
+    setMessages(readStoredMessages(projectId))
+  }, [projectId])
+
+  useEffect(() => () => abortRef.current?.abort(), [])
+
   const submitMessage = async () => {
     const text = input.trim()
 
-    if (!text) {
+    if (!text || isStreaming) {
       return
     }
 
     const content = messageWithUploadContext(text, uploadedFiles)
+    const assistantId = crypto.randomUUID()
+    const controller = new AbortController()
+    let receivedAssistantText = false
 
+    abortRef.current = controller
+    setIsStreaming(true)
     setInput('')
-    setMessages((current) => [...current, { id: crypto.randomUUID(), role: 'user', content: text }])
+    setMessages((current) => [
+      ...current,
+      { id: crypto.randomUUID(), role: 'user', content: text },
+      { id: assistantId, role: 'assistant', content: '' },
+    ])
 
     try {
       const response = await fetch(new URL('/api/agents/planner-agent/stream', getMastraUrl()), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           messages: [{ role: 'user', content }],
           projectId,
@@ -97,24 +211,38 @@ export function ChatPanel({ t, projectId, events }: ChatPanelProps) {
         throw new Error(`${response.status} ${response.statusText}`)
       }
 
-      setMessages((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          role: 'system',
-          content: 'Instruction sent. Agent responses will appear in the activity stream.',
-        },
-      ])
+      await streamAssistantText(response, (delta) => {
+        receivedAssistantText = true
+        setMessages((current) => appendAssistantDelta(current, assistantId, delta))
+      })
+
+      if (!receivedAssistantText) {
+        setMessages((current) => appendAssistantDelta(current, assistantId, 'No assistant text returned. Check the activity stream for agent progress.'))
+      }
     } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setMessages((current) => appendAssistantDelta(current, assistantId, '\n\nStopped.'))
+        return
+      }
+
       setMessages((current) => [
-        ...current,
+        ...current.filter((message) => message.id !== assistantId),
         {
           id: crypto.randomUUID(),
           role: 'system',
           content: `Planner endpoint unavailable: ${err instanceof Error ? err.message : 'request failed'}`,
         },
       ])
+    } finally {
+      if (abortRef.current === controller) {
+        abortRef.current = null
+      }
+      setIsStreaming(false)
     }
+  }
+
+  const stopStreaming = () => {
+    abortRef.current?.abort()
   }
 
   const uploadFiles = async (files: FileList | File[]) => {
@@ -141,12 +269,13 @@ export function ChatPanel({ t, projectId, events }: ChatPanelProps) {
       try {
         const result = await uploadProjectFile(projectId, file)
         if (result.path) {
+          const path = result.path
           setUploadedFiles((current) => [
             ...current,
             {
               assetId: result.assetId,
               originalName: result.originalName ?? file.name,
-              path: result.path,
+              path,
               mime: result.mime ?? file.type,
             },
           ])
@@ -269,10 +398,11 @@ export function ChatPanel({ t, projectId, events }: ChatPanelProps) {
             value={input}
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === 'Enter') {
+              if (event.key === 'Enter' && !isStreaming) {
                 void submitMessage()
               }
             }}
+            disabled={isStreaming}
             placeholder="Give instructions..."
             style={{
               flex: 1,
@@ -282,14 +412,15 @@ export function ChatPanel({ t, projectId, events }: ChatPanelProps) {
               fontSize: 12,
               color: t.text,
               fontFamily: t.font,
+              opacity: isStreaming ? 0.6 : 1,
             }}
           />
           <button
-            onClick={() => void submitMessage()}
+            onClick={() => (isStreaming ? stopStreaming() : void submitMessage())}
             style={{
-              background: t.accent,
+              background: isStreaming ? 'oklch(0.62 0.22 25)' : t.accent,
               border: 'none',
-              width: 24,
+              width: isStreaming ? 42 : 24,
               height: 24,
               borderRadius: t.radiusSm,
               cursor: 'pointer',
@@ -302,7 +433,7 @@ export function ChatPanel({ t, projectId, events }: ChatPanelProps) {
               flexShrink: 0,
             }}
           >
-            ↑
+            {isStreaming ? 'Stop' : '↑'}
           </button>
         </div>
         <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
