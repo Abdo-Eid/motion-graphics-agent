@@ -95,6 +95,10 @@ export const previewRoutes: ApiRoute[] = [
     path: '/preview/:projectId',
     method: 'GET',
     handler: async c => {
+      // projectId is used in the HTML title only. The workspace is intentionally
+      // global (one Remotion project directory for the active session). If
+      // per-project workspace isolation is ever needed, workspaceRoot would need
+      // to be derived from projectId here and in workspace-config.ts.
       const projectId = c.req.param('projectId') ?? 'default';
       const revision = c.req.query('rev') ?? `${Date.now()}`;
 

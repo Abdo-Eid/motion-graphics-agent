@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ActivityPanel } from './components/activity-panel'
 import { BottomPanel, type BottomPanelTab } from './components/bottom-panel'
 import { ChatPanel } from './components/chat-panel'
@@ -8,20 +8,23 @@ import { Topbar } from './components/topbar'
 import { useActivityStream } from './lib/events'
 import { THEMES } from './theme/themes'
 
-const PROJECT_ID = 'product-walkthrough'
+function generateProjectId() {
+  return `project-${Math.random().toString(36).slice(2, 8)}`
+}
 
 function isSourceFileEvent(path: string) {
   return !path.startsWith('.preview/') && !path.startsWith('node_modules/') && !path.startsWith('.git/') && path !== 'bun.lock'
 }
 
 export default function App() {
+  const [projectId, setProjectId] = useState(() => generateProjectId())
   const [activeFile, setActiveFile] = useState<string | null>(null)
   const [bottomOpen, setBottomOpen] = useState(true)
   const [activeTab, setActiveTab] = useState<BottomPanelTab>('files')
   const [dark, setDark] = useState(
     () => localStorage.getItem('theme') === 'dark',
   )
-  const activity = useActivityStream(PROJECT_ID)
+  const activity = useActivityStream(projectId)
   const workspaceRevision = useMemo(
     () =>
       activity.events.reduce(
@@ -36,6 +39,12 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('theme', dark ? 'dark' : 'light')
   }, [dark])
+
+  const handleNewProject = useCallback(() => {
+    const fresh = generateProjectId()
+    setProjectId(fresh)
+    activity.reconnect()
+  }, [activity])
 
   return (
     <div
@@ -70,13 +79,15 @@ export default function App() {
             onRetry={activity.reconnect}
           />
         }
+        projectId={projectId}
+        onNewProject={handleNewProject}
       />
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <ChatPanel t={t} projectId={PROJECT_ID} events={activity.events} />
+        <ChatPanel t={t} projectId={projectId} events={activity.events} />
         <PlayerPanel
           t={t}
-          projectId={PROJECT_ID}
+          projectId={projectId}
           events={activity.events}
           revision={workspaceRevision}
         />

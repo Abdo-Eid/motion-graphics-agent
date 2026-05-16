@@ -49,7 +49,7 @@ function ToolCallRow({ t, event }: { t: Theme; event: ActivityEvent & { type: 'a
         <span style={{ fontSize: 9, color: t.textDim, fontFamily: t.monoFont, flexShrink: 0 }}>
           {expanded ? '▼' : '▶'}
         </span>
-        <span style={{ fontSize: 10, color: AGENT_COLORS[event.agent] || t.textMuted, fontFamily: t.monoFont }}>
+        <span style={{ fontSize: 10, color: AGENT_COLORS[event.agent === 'art-director' ? 'Art Director' : event.agent === 'implementor' ? 'Implementor' : 'Planner'] || t.textMuted, fontFamily: t.monoFont }}>
           {event.tool}
         </span>
         <span style={{ fontSize: 9, color: t.textDim, fontFamily: t.monoFont, flexShrink: 0, marginLeft: 'auto' }}>

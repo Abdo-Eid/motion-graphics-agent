@@ -6,9 +6,11 @@ type TopbarProps = {
   dark: boolean
   setDark: Dispatch<SetStateAction<boolean>>
   statusSlot?: ReactNode
+  projectId: string
+  onNewProject: () => void
 }
 
-export function Topbar({ t, dark, setDark, statusSlot }: TopbarProps) {
+export function Topbar({ t, dark, setDark, statusSlot, projectId, onNewProject }: TopbarProps) {
   return (
     <div
       style={{
@@ -54,7 +56,7 @@ export function Topbar({ t, dark, setDark, statusSlot }: TopbarProps) {
       </div>
       <div style={{ width: 1, height: 20, background: t.border }} />
       <span style={{ fontSize: 12, color: t.textMuted, fontFamily: t.monoFont }}>
-        product-walkthrough
+        {projectId}
       </span>
 
       <div
@@ -65,19 +67,22 @@ export function Topbar({ t, dark, setDark, statusSlot }: TopbarProps) {
           gap: 8,
         }}
       >
-        {statusSlot}
-        <div
+        <button
+          onClick={onNewProject}
           style={{
             padding: '3px 10px',
             borderRadius: 99,
             border: `1px solid ${t.border}`,
             fontSize: 11,
-            color: t.textMuted,
+            color: t.accent,
             fontFamily: t.monoFont,
+            cursor: 'pointer',
+            background: 'transparent',
           }}
         >
-          20.0s · 1920×1080
-        </div>
+          + New Project
+        </button>
+        {statusSlot}
         <button
           onClick={() => setDark((current) => !current)}
           title="Toggle theme"

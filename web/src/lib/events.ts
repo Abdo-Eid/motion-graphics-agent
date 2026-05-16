@@ -48,6 +48,7 @@ export function useActivityStream(projectId: string): {
   const [retryKey, setRetryKey] = useState(0)
 
   useEffect(() => {
+    setEvents([])
     const source = new EventSource(getEventsUrl(projectId))
 
     source.onopen = () => setConnection('open')
@@ -57,9 +58,11 @@ export function useActivityStream(projectId: string): {
         const parsed: unknown = JSON.parse(message.data)
 
         if (isActivityEvent(parsed)) {
+          console.log('[events]', parsed.type, 'agent' in parsed ? parsed.agent : '')
           setEvents((current) => [...current, parsed].slice(-MAX_EVENTS))
         }
       } catch {
+        console.warn('[events] failed to parse:', message.data.slice(0, 200))
         setConnection('closed')
       }
     }

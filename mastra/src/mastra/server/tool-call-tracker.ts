@@ -10,17 +10,10 @@ export function createToolCallTracker(agentName: string): OutputProcessor {
     async processOutputStream({ part, requestContext }: ProcessOutputStreamArgs): Promise<ChunkType | null | undefined> {
       const projectId = requestContext?.get('projectId') as string | undefined ?? 'default';
 
-      if (part.type === 'tool-call') {
-        bus.emitEvent('agent.tool', {
-          agent: agentName,
-          projectId,
-          tool: part.payload.toolName,
-          input: part.payload.args,
-          output: part.payload.output,
-        });
-      }
-
+      // Emit only on tool-result so each tool use produces exactly one event,
+      // and we have both input (args) and output (result) available.
       if (part.type === 'tool-result') {
+
         bus.emitEvent('agent.tool', {
           agent: agentName,
           projectId,

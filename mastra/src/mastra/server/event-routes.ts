@@ -85,11 +85,15 @@ function toActivityEvent(event: BusEvent): ActivityEvent | null {
 }
 
 function matchesProject(event: BusEvent, projectId: string): boolean {
+  // Events with no projectId field (e.g. workspace.file, service.health) are
+  // broadcast to all SSE clients. This is intentional: the workspace is global
+  // and every connected tab needs file-change events to refresh its preview.
   return !('projectId' in event) || event.projectId === undefined || event.projectId === projectId;
 }
 
 function encodeSse(event: ActivityEvent): string {
-  return `data: ${JSON.stringify(event)}\n\n`;
+  const encoded = `data: ${JSON.stringify(event)}\n\n`;
+  return encoded;
 }
 
 export const eventRoutes: ApiRoute[] = [
@@ -103,6 +107,8 @@ export const eventRoutes: ApiRoute[] = [
         start(controller) {
           const send = (event: ActivityEvent) => controller.enqueue(encoder.encode(encodeSse(event)));
           const listeners = streamedEventTypes.map(type => {
+            // The listener receives the full BusEvent union; we narrow after
+            // matching on type inside toActivityEvent / matchesProject.
             const listener = (event: BusEvent) => {
               if (!matchesProject(event, projectId)) {
                 return;
@@ -114,7 +120,7 @@ export const eventRoutes: ApiRoute[] = [
               }
             };
 
-            bus.onAnyEvent(type, listener);
+            bus.onEvent(type, listener as Parameters<typeof bus.onEvent<typeof type>>[1]);
             return { type, listener };
           });
 
@@ -122,7 +128,7 @@ export const eventRoutes: ApiRoute[] = [
 
           c.req.raw.signal.addEventListener('abort', () => {
             for (const { type, listener } of listeners) {
-              bus.offAnyEvent(type, listener);
+              bus.offEvent(type, listener as Parameters<typeof bus.offEvent<typeof type>>[1]);
             }
             controller.close();
           }, { once: true });

@@ -30,13 +30,10 @@ class ProjectBus extends EventEmitter {
     return super.off(type, listener as (event: unknown) => void);
   }
 
-  onAnyEvent(type: BusEventType, listener: (event: BusEvent) => void): this {
-    return super.on(type, listener as (event: unknown) => void);
-  }
 
-  offAnyEvent(type: BusEventType, listener: (event: BusEvent) => void): this {
-    return super.off(type, listener as (event: unknown) => void);
-  }
 }
 
 export const bus = new ProjectBus();
+// Each SSE connection registers one listener per event type (8 types).
+// Allow enough headroom for many concurrent connections before Node warns.
+bus.setMaxListeners(200);

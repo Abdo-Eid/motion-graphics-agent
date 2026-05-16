@@ -1,19 +1,22 @@
-import { existsSync, watch, type FSWatcher } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
-import { relative, resolve } from 'node:path';
+
+import chokidar, { type FSWatcher } from 'chokidar';
 
 import { workspaceRoot } from '../workspace-root';
 import { bus } from './bus';
 
 let watcher: FSWatcher | null = null;
 
-function toWorkspacePath(filename: string | Buffer | null): string | null {
-  if (!filename) {
-    return null;
-  }
+const IGNORED = [
+  /[/\\]\.preview[/\\]/,
+  /[/\\]node_modules[/\\]/,
+  /[/\\]\.git[/\\]/,
+  /bun\.lock$/,
+];
 
-  const path = relative(workspaceRoot, resolve(workspaceRoot, filename.toString())).replaceAll('\\', '/');
-  return path && !path.startsWith('..') ? path : null;
+function toWorkspacePath(absPath: string): string {
+  const rel = absPath.replace(workspaceRoot, '').replaceAll('\\', '/').replace(/^\//, '');
+  return rel;
 }
 
 export async function startWorkspaceWatcher(): Promise<void> {
@@ -23,20 +26,29 @@ export async function startWorkspaceWatcher(): Promise<void> {
 
   await mkdir(workspaceRoot, { recursive: true });
 
-  watcher = watch(workspaceRoot, { recursive: true }, (eventType, filename) => {
-    const path = toWorkspacePath(filename);
+  // chokidar works cross-platform (including Linux where Node's fs.watch
+  // with { recursive: true } only watches the top-level directory).
+  watcher = chokidar.watch(workspaceRoot, {
+    ignored: IGNORED,
+    persistent: true,
+    ignoreInitial: true,
+    // Avoid emitting events for incomplete writes.
+    awaitWriteFinish: { stabilityThreshold: 80, pollInterval: 50 },
+  });
 
-    if (!path) {
-      return;
-    }
+  watcher.on('add', (absPath) => {
+    bus.emitEvent('workspace.file', { path: toWorkspacePath(absPath), change: 'add' });
+  });
 
-    if (path.startsWith('.preview/') || path.startsWith('node_modules/') || path.startsWith('.git/') || path === 'bun.lock') {
-      return;
-    }
+  watcher.on('change', (absPath) => {
+    bus.emitEvent('workspace.file', { path: toWorkspacePath(absPath), change: 'change' });
+  });
 
-    bus.emitEvent('workspace.file', {
-      path,
-      change: eventType === 'rename' && !existsSync(resolve(workspaceRoot, path)) ? 'unlink' : eventType === 'rename' ? 'add' : 'change',
-    });
+  watcher.on('unlink', (absPath) => {
+    bus.emitEvent('workspace.file', { path: toWorkspacePath(absPath), change: 'unlink' });
+  });
+
+  watcher.on('error', (err) => {
+    console.error('[workspace-watch] watcher error:', err);
   });
 }

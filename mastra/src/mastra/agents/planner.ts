@@ -82,12 +82,13 @@ You never write code, never read/write files, and never use Workspace tools dire
   },
   outputProcessors: [createToolCallTracker('planner')],
   defaultOptions: {
-    maxSteps: 20,
+    maxSteps: Number(process.env.PLANNER_MAX_STEPS ?? 50),
     delegation: {
       onDelegationStart: async (context: DelegationStartContext) => {
+        const projectId = projectIdFromDelegationContext(context);
         bus.emitEvent('agent.start', {
           agent: context.primitiveId,
-          projectId: projectIdFromDelegationContext(context),
+          projectId,
           input: context.prompt,
         });
 
@@ -107,6 +108,7 @@ You never write code, never read/write files, and never use Workspace tools dire
         }
 
         const outputText = context.result.text;
+
         if (outputText) {
           bus.emitEvent('agent.message', {
             agent: context.primitiveId,

@@ -10,6 +10,7 @@
     "scripts": {
         "dev": "concurrently \"bun run dev:mastra\" \"bun run dev:web\"",
         "dev:web": "cd web && bun --env-file=../.env run dev",
+        "//dev:mastra": "The 'git checkout 1483557 -- mastra/.workspace' resets the workspace to a known-good baseline commit on every dev start. This is intentional: it prevents agent-generated code from accumulating across sessions and ensures a clean slate each time. If you need to keep workspace changes between runs, remove that prefix. Commit 1483557 is the empty Remotion scaffold that the Implementor writes into.",
         "dev:mastra": "git checkout 1483557 -- mastra/.workspace && cd mastra && bun --bun --env-file=../.env run dev"
     },
     "devDependencies": {

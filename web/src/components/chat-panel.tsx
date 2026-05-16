@@ -102,20 +102,46 @@ function appendAssistantDelta(current: ChatEntry[], id: string, delta: string): 
 function readMastraTextLine(line: string): string | null {
   const trimmed = line.trim()
 
-  if (!trimmed.startsWith('0:')) {
-    return null
+  // AI SDK / Mastra text stream: 0:"hello"
+  if (trimmed.startsWith('0:')) {
+    try {
+      const parsed: unknown = JSON.parse(trimmed.slice(2))
+      if (typeof parsed === 'string') return parsed
+      if (Array.isArray(parsed)) {
+        const texts = parsed
+          .filter((part): part is { type: 'text'; text: string } => part && typeof part === 'object' && part.type === 'text' && typeof part.text === 'string')
+          .map(part => part.text)
+          .join('')
+        return texts || null
+      }
+    } catch { /* fall through */ }
   }
 
-  try {
-    const parsed: unknown = JSON.parse(trimmed.slice(2))
-    return typeof parsed === 'string' ? parsed : null
-  } catch {
-    return null
+  // SSE format: data: {"type":"text-delta","payload":{"text":"Hello"}}
+  if (trimmed.startsWith('data:')) {
+    try {
+      const payload: unknown = JSON.parse(trimmed.slice(5))
+      if (payload && typeof payload === 'object') {
+        const obj = payload as Record<string, unknown>
+        if (obj.type === 'text-delta' && obj.payload && typeof obj.payload === 'object') {
+          const p = obj.payload as Record<string, unknown>
+          if (typeof p.text === 'string') return p.text
+        }
+      }
+    } catch { /* fall through */ }
   }
+
+  return null
 }
 
 async function streamAssistantText(response: Response, onDelta: (delta: string) => void) {
   if (!response.body) {
+    console.warn('[chat] No response body')
+    return
+  }
+
+  if (response.body.locked) {
+    console.warn('[chat] Response body already locked')
     return
   }
 
@@ -142,10 +168,25 @@ async function streamAssistantText(response: Response, onDelta: (delta: string) 
     }
   }
 
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split(/\r?\n/)
+    buffer = lines.pop() ?? ''
+
+    for (const line of lines) {
+      totalLines++
+      const delta = readMastraTextLine(line)
+      if (delta) {
+        parsedLines++
+        onDelta(delta)
+      }
+    }
+  }
+
   const finalDelta = readMastraTextLine(buffer)
   if (finalDelta) {
     onDelta(finalDelta)
   }
+
 }
 
 export function ChatPanel({ t, projectId, events }: ChatPanelProps) {
@@ -170,7 +211,18 @@ export function ChatPanel({ t, projectId, events }: ChatPanelProps) {
     setMessages(readStoredMessages(projectId))
   }, [projectId])
 
+  // Abort any in-flight stream and reset per-project state when the project changes.
+  useEffect(() => {
+    abortRef.current?.abort()
+    abortRef.current = null
+    setIsStreaming(false)
+    setUploadedFiles([])
+    setInput('')
+  }, [projectId])
+
   useEffect(() => () => abortRef.current?.abort(), [])
+
+  const processedEventIds = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     const agentMessages = events
@@ -178,16 +230,21 @@ export function ChatPanel({ t, projectId, events }: ChatPanelProps) {
 
     for (const msg of agentMessages) {
       const entryId = `event-${msg.ts}-${msg.agent}`
-      const alreadyExists = messages.some(m => m.id === entryId)
+      if (processedEventIds.current.has(entryId)) continue
 
-      if (!alreadyExists && msg.text.trim()) {
+      if (msg.text.trim()) {
+        processedEventIds.current.add(entryId)
         setMessages(current => [
           ...current,
           { id: entryId, role: 'assistant', content: msg.text.trim(), agent: msg.agent },
         ])
       }
     }
-  }, [events, messages])
+  }, [events])
+
+  useEffect(() => {
+    processedEventIds.current.clear()
+  }, [projectId])
 
   const submitMessage = async () => {
     const text = input.trim()
